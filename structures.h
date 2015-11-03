@@ -204,15 +204,21 @@ public:
 struct Frame : public Noncopyable{
 private:
     Block* content_;
+    bool inited_;
 public:
     const int vertical_count;
     const int horizontal_count;
 
     Frame(int v_count,int h_count):vertical_count(v_count),horizontal_count(h_count), content_(nullptr){}
     void init(){
+        inited_=true;
         if(!content_)content_=new Block[vertical_count*horizontal_count];
         for(int i=0;i<vertical_count*horizontal_count;i++)
             content_[i].reset();
+    }
+    bool inited(){return inited_;}
+    void reset(){
+        inited_=false;
     }
     Block& get_block_ref(int x, int y){
         return content_[x+y*horizontal_count];
@@ -338,7 +344,12 @@ public:
             data=new uint8_t[len];
             data_len=len;
         }
+        inited_=true;
     }
+    void reset(){
+        inited_=false;
+    }
+    bool inited(){return inited_;}
     ~Segment(){
         if(data)delete[] data;
     }
@@ -349,23 +360,28 @@ struct Rx_frame: public Noncopyable{
     std::vector<Segment> segments;
     std::vector<Block_type> block_types;
 
-    Rx_frame(int vcount, int hcount):segments(vcount*hcount),block_types(vcount*hcount){}
+    Rx_frame(int vcount, int hcount):segments((unsigned)(vcount*hcount)),block_types((unsigned)(vcount*hcount)){}
+    void reset(){
+        for(int i=0;i<segments.size();i++){
+            segments[i].reset();
+            block_types[i]=Block_type::IDLE;
+        }
+    }
 };
 struct Rx_window{
     const static int WINDOW_SIZE=64;
-
-
+private:
     std::vector<Rx_frame> frames;
+public:
     int top;
     int tail;
 
-
-
     Rx_frame& activate(int frameId, bool& replaced);
 
-    Rx_frame* peak_frame(int& frameId);
+    Rx_frame& get_frame(int frameId);
 
-    bool pop_frame(int frameId);
+    //frames which id<=till_frameId will be removed.
+    bool truncate_frames(int till_frameId);
 };
 
 #endif //DCODE_STRUCTURES_H
