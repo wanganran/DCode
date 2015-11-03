@@ -37,7 +37,11 @@ public:
     struct Barcode_config {
         const int supported_block_size[4];
 
-        Barcode_config(supported_block_size_0, supported_block_size_1, supported_block_size_2, supported_block_size_3):
+        const int vertical_block_count;
+        const int horizontal_block_count;
+
+        Barcode_config(int supported_block_size_0, int supported_block_size_1, int supported_block_size_2, int supported_block_size_3,
+        int vcount, int hcount): vertical_block_count(vcount),horizontal_block_count(hcount),
                 supported_block_size{supported_block_size_0,supported_block_size_1,supported_block_size_2,supported_block_size_3}{}
     } barcode_config;
 	struct Performance_config{
@@ -94,6 +98,9 @@ public:
             int supported_block_size_2 = read_int(fp);
             int supported_block_size_3 = read_int(fp);
 
+            int vcount=read_int(fp);
+            int hcount=read_int(fp);
+
             int thread_count = read_int(fp);
             int LDPC_max_iteration = read_int(fp);
 
@@ -105,7 +112,7 @@ public:
             singleton = new Config(
                 Hardware_config(tx_width, tx_height, rx_width, rx_height),
                 Barcode_config(supported_block_size_0, supported_block_size_1, supported_block_size_2,
-                               supported_block_size_3),
+                               supported_block_size_3, vcount,hcount),
                 Performance_config(thread_count, LDPC_max_iteration),
                 Recognition_config(initial_color_channel_threshold,vignette_depth,vignette_width,distortion_level)
             );

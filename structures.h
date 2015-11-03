@@ -34,7 +34,16 @@ enum class FEC_level{
  * PHY Block format:
  * | Anchor: 3 sym | Syn: 1 sym | Block_type: 1 sym | Data with anchor and flag | Block type: 1 sym | Syn: 1 sym | Anchor: 3 sym |
  */
-struct Block{
+
+struct Noncopyable{
+protected:
+    Noncopyable(){}
+    ~Noncopyable(){}
+public:
+    Noncopyable(const Noncopyable&)=delete;
+    Noncopyable& operator = (const Noncopyable&) =delete;
+};
+struct Block : public Noncopyable{
 private:
     RGB* content_;
     bool inited_;
@@ -192,7 +201,7 @@ public:
     }
 };
 
-struct Frame{
+struct Frame : public Noncopyable{
 private:
     Block* content_;
 public:
@@ -307,7 +316,7 @@ struct PHY_probe_result{
 struct PHY_action_result: public PHY_action{
 };
 
-struct Segment{
+struct Segment : public Noncopyable{
 private:
 
     bool inited_;
@@ -330,21 +339,33 @@ public:
             data_len=len;
         }
     }
+    ~Segment(){
+        if(data)delete[] data;
+    }
 };
 
+struct Rx_frame: public Noncopyable{
+
+    std::vector<Segment> segments;
+    std::vector<Block_type> block_types;
+
+    Rx_frame(int vcount, int hcount):segments(vcount*hcount),block_types(vcount*hcount){}
+};
 struct Rx_window{
     const static int WINDOW_SIZE=64;
 
-    using Rx_frame=Option<Segment>*;
-    Rx_frame frames[WINDOW_SIZE];
+
+    std::vector<Rx_frame> frames;
     int top;
     int tail;
 
 
 
-    Rx_frame activate(int frameId, bool& replaced);
+    Rx_frame& activate(int frameId, bool& replaced);
 
-    std::iterator
+    Rx_frame* peak_frame(int& frameId);
+
+    bool pop_frame(int frameId);
 };
 
 #endif //DCODE_STRUCTURES_H
