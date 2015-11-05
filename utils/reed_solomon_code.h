@@ -25,6 +25,15 @@ public:
 	uint8_t* encode(uint8_t * input);
 	uint8_t* decode(uint8_t * input);
 	~Reed_solomon_code();
+
+    static Reed_solomon_code& get_or_update(int n, int k){
+        static Reed_solomon_code singleton(n,k);
+        if(singleton.n==n && singleton.k==k)return singleton;
+        else{
+            singleton=Reed_solomon_code(n,k);
+            return singleton;
+        }
+    }
 };
 
 
