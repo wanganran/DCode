@@ -13,6 +13,8 @@
 #define WARN(...) {printf("WARNING:\t"); printf(__VA_ARGS__);}
 #define ERROR(...) {printf("ERROR:\t"); printf(__VA_ARGS__); exit(0);}
 
+#define MAX_INT ((1<<31)-1)
+
 //statistics consts
 
 struct Normal_dist{
@@ -428,7 +430,16 @@ defer(Func&& func) {
 //encoding related
 inline uint8_t PAR2(uint8_t x){
     x&=6;
-    return x|((x&4)>>2)|((x&2)>>1);
+    return (uint8_t)(x|((x&4)>>2)|((x&2)>>1));
+}
+
+//random 0-7
+uint8_t rand_8(){
+    return (uint8_t)(rand()&7);
+}
+//random 0-255
+uint8_t rand_256(){
+    return (uint8_t)(rand()&255);
 }
 
 //algo utils
@@ -464,4 +475,15 @@ int bsearch_less(T* data, int len, T tofind){
     if(l==r)return l;
     else return data[r]<tofind?r:l;
 }
+
+//for cached objects and singletons: no copy allowed
+struct Noncopyable{
+protected:
+    Noncopyable(){}
+    ~Noncopyable(){}
+public:
+    Noncopyable(const Noncopyable&)=delete;
+    Noncopyable& operator = (const Noncopyable&) =delete;
+};
+
 #endif //DCODE_UTILS_H

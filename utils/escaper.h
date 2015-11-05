@@ -2,8 +2,8 @@
 // Created by 王安然 on 15/9/13.
 //
 
-#ifndef DCODE_ESCAPE_FSM_H
-#define DCODE_ESCAPE_FSM_H
+#ifndef DCODE_ESCAPER_H
+#define DCODE_ESCAPER_H
 #include <stdint.h>
 #include <math.h>
 #include "utils.h"
@@ -14,7 +14,8 @@ private:
     int correct_;
     int error_;
 
-    const bool ERR_MAP[]={true, false, true, false, false, true, false, true};
+    static const bool ERR_MAP[]={true, false, true, false, false, true, false, true};
+    static const bool ESCAPE_MAP[]={true, true, false, false};
 public:
     Escaper():count_(0),correct_(0),error_(0){}
     void reset(){count_=0;correct_=0;error_=0;}
@@ -33,6 +34,17 @@ public:
             ERR_MAP[symbol&7]?error_++:correct_++;
             *out |= (symbol&6);
             return out+1;
+        }
+    }
+
+    void escape(uint8_t byte, uint8_t* out, int out_limit=3){
+        switch(out_limit){
+            case 3:
+                out[2]=(uint8_t)(ESCAPE_MAP[byte&3]?1:0|((byte&3)<<1));
+            case 2:
+                out[1]=(uint8_t)((byte>>2)&7);
+            case 1:
+                out[0]=(uint8_t)((byte>>5)&7);
         }
     }
 };
@@ -100,4 +112,4 @@ public:
     }
 };
 */
-#endif //DCODE_ESCAPE_FSM_H
+#endif //DCODE_ESCAPER_H

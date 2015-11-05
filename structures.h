@@ -5,7 +5,7 @@
 #ifndef DCODE_STRUCTURES_H
 #define DCODE_STRUCTURES_H
 
-
+#include "utils/utils.h"
 #include "symbol_scanner.h"
 
 enum class Block_type:uint8_t {
@@ -23,9 +23,16 @@ enum class Error_estimate{
 };
 
 enum class FEC_level{
-    HIGH,
-    MID,
-    LOW
+    HIGH=0,
+    MID=1,
+    LOW=2
+};
+
+enum class Packet_type{
+    DATA,
+    ACK,
+    SINGLE_BLOCK_RETRANSMISSION,
+    COMBINED_RETRANSMISSION
 };
 
 // Transmitter related structures
@@ -35,22 +42,14 @@ enum class FEC_level{
  * | Anchor: 3 sym | Syn: 1 sym | Block_type: 1 sym | Data with anchor and flag | Block type: 1 sym | Syn: 1 sym | Anchor: 3 sym |
  */
 
-struct Noncopyable{
-protected:
-    Noncopyable(){}
-    ~Noncopyable(){}
-public:
-    Noncopyable(const Noncopyable&)=delete;
-    Noncopyable& operator = (const Noncopyable&) =delete;
-};
-struct Block : public Noncopyable{
+struct Tx_block : public Noncopyable{
 private:
     RGB* content_;
     bool inited_;
 public:
     int sidelength;
 
-    Block():sidelength(-1),content_(nullptr), inited_(false){}
+    Tx_block():sidelength(-1),content_(nullptr), inited_(false){}
     void init(int sidelength, Block_type type, uint8_t syn, bool para_parity){
         if(this->sidelength!=sidelength) {
             this->sidelength = sidelength;
@@ -117,10 +116,10 @@ public:
         return get(pos%sidelength,pos/sidelength);
     }
 
-    class Block_helper{
-    friend class Block;
+    class Tx_block_helper{
+    friend class Tx_block;
     private:
-        Block* block_;
+        Tx_block* block_;
         unsigned int pos_pri_;
         unsigned int pos_sec_;
         const int max_pos_;
@@ -128,7 +127,7 @@ public:
         int escape_ptr_sec_;
         int escape_buffer[27];
 
-        Block_helper(Block* block):block_(block), pos_pri_(0), pos_sec_(0), max_pos_(block->sidelength*block->sidelength), escape_ptr_pri_(0),escape_ptr_sec_(0), escape_buffer({
+        Tx_block_helper(Tx_block* block):block_(block), pos_pri_(0), pos_sec_(0), max_pos_(block->sidelength*block->sidelength), escape_ptr_pri_(0),escape_ptr_sec_(0), escape_buffer({
                 0,1,2,3,4, block_->sidelength/2, block_->sidelength-2,block_->sidelength-1, //8
                 block_->sidelength+0,block_->sidelength+1,block_->sidelength+2,block_->sidelength*2-2,block_->sidelength*2-1, //5
                 block_->sidelength*2+0,block_->sidelength*2+1,block_->sidelength*3-1, //3
@@ -195,24 +194,24 @@ public:
     };
 
     //return empty ptr when not initialized
-    std::unique_ptr<Block_helper> get_helper(){
-        if(inited())return std::unique_ptr<Block_helper>(this);
-        else return std::unique_ptr<Block_helper>(nullptr);
+    std::unique_ptr<Tx_block_helper> get_helper(){
+        if(inited())return std::unique_ptr<Tx_block_helper>(this);
+        else return std::unique_ptr<Tx_block_helper>(nullptr);
     }
 };
 
-struct Frame : public Noncopyable{
+struct Tx_frame : public Noncopyable{
 private:
-    Block* content_;
+    Tx_block* content_;
     bool inited_;
 public:
     const int vertical_count;
     const int horizontal_count;
 
-    Frame(int v_count,int h_count):vertical_count(v_count),horizontal_count(h_count), content_(nullptr){}
+    Tx_frame(int v_count,int h_count):vertical_count(v_count),horizontal_count(h_count), content_(nullptr){}
     void init(){
         inited_=true;
-        if(!content_)content_=new Block[vertical_count*horizontal_count];
+        if(!content_)content_=new Tx_block[vertical_count*horizontal_count];
         for(int i=0;i<vertical_count*horizontal_count;i++)
             content_[i].reset();
     }
@@ -220,7 +219,7 @@ public:
     void reset(){
         inited_=false;
     }
-    Block& get_block_ref(int x, int y){
+    Tx_block& get_block_ref(int x, int y){
         return content_[x+y*horizontal_count];
     }
     int get_total_symbol_vertical_count_with_border(int sidelength){
@@ -276,8 +275,8 @@ public:
     }
 };
 
-struct PHY_probe{
-    bool fill_block(Block& dest){
+struct Tx_PHY_probe{
+    bool fill_block(Tx_block& dest){
         if(!dest.inited())return false;
         auto helper=dest.get_helper();
         //first is palette
@@ -299,7 +298,7 @@ struct PHY_probe{
     };
 };
 
-struct PHY_action{
+struct Tx_PHY_action{
     bool next_expected_parity;
     int next_sidelength;
     uint8_t color_sec_mask;
@@ -309,7 +308,7 @@ struct PHY_action{
 
 //Receiver related structures
 
-struct PHY_probe_result{
+struct Rx_PHY_probe_result{
     std::vector<RGB> received_probe_colors[64];
     enum class Edge_sharpness{
         SHARP,
@@ -319,10 +318,10 @@ struct PHY_probe_result{
     Error_estimate error_estimate_pri, error_estimate_sec;
 };
 
-struct PHY_action_result: public PHY_action{
+struct Rx_PHY_action_result: public Tx_PHY_action{
 };
 
-struct Segment : public Noncopyable{
+struct Rx_segment : public Noncopyable{
 private:
 
     bool inited_;
@@ -336,7 +335,7 @@ public:
     int data_len;
 
 
-    Segment():inited_(false),data(nullptr),data_len(0){}
+    Rx_segment():inited_(false),data(nullptr),data_len(0){}
 
     void init(int len){
         if(data_len!=len){
@@ -357,7 +356,7 @@ public:
 
 struct Rx_frame: public Noncopyable{
 
-    std::vector<Segment> segments;
+    std::vector<Rx_segment> segments;
     std::vector<Block_type> block_types;
 
     Rx_frame(int vcount, int hcount):segments((unsigned)(vcount*hcount)),block_types((unsigned)(vcount*hcount)){}

@@ -9,9 +9,11 @@
 #include "palette.h"
 #include "structures.h"
 
-struct Adaptive_parameters{
+struct Rx_adaptive_parameters{
 private:
-    Adaptive_parameters(){}
+    Rx_adaptive_parameters(){
+        //TODO: initial configurations
+    }
 
 public:
 
@@ -24,15 +26,60 @@ public:
 
     bool palette_analyzer_combine();
 
-    Adaptive_parameters& get_global_by_parity(bool parity, bool& out_is_newest){
-        static Adaptive_parameters singleton_odd;
-        static Adaptive_parameters singleton_even;
+    static Rx_adaptive_parameters& get_global_by_parity(bool parity, bool& out_is_newest){
+        static Rx_adaptive_parameters singleton_odd;
+        static Rx_adaptive_parameters singleton_even;
 
         if(parity)
             out_is_newest=singleton_even.update_tick>singleton_odd.update_tick;
         else out_is_newest=singleton_even.update_tick<singleton_odd.update_tick;
 
         return parity?singleton_even:singleton_odd;
+    }
+};
+
+struct Tx_adaptive_parameters{
+private:
+    Tx_adaptive_parameters():has_next(false){
+        //TODO: initial configurations
+    };
+
+    int next_block_sidelength;
+    int next_color_sec_mask;
+    FEC_level  next_primary, next_secondary;
+    bool has_next;
+
+
+public:
+    bool shift_next(){
+        if(has_next){
+            block_sidelength=next_block_sidelength;
+            color_sec_mask=next_color_sec_mask;
+            FEC_strength_primary=next_primary;
+            FEC_strength_secondary=next_secondary;
+            parity=!parity;
+            has_next=false;
+            return true;
+        }
+        return false;
+    }
+
+    int block_sidelength;
+    int color_sec_mask;
+    FEC_level FEC_strength_primary;
+    FEC_level FEC_strength_secondary;
+    bool parity;
+
+    void update_next_frame(int block_sidelength, int color_sec_mask, FEC_level FEC_pri, FEC_level FEC_sec){
+        next_block_sidelength=block_sidelength;
+        next_color_sec_mask=color_sec_mask;
+        next_primary=FEC_pri;
+        next_secondary=FEC_sec;
+        has_next=true;
+    }
+
+    static Tx_adaptive_parameters& current(){
+        static Tx_adaptive_parameters singleton;
     }
 };
 
