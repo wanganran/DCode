@@ -18,7 +18,7 @@
 class Modulator: public Noncopyable {
 private:
     Escaper escaper_;
-    Reed_solomon_code coder;
+    Reed_solomon_code_buffered coder_buffered_;
 public:
     void modulate_idle(Tx_block& dest);
 

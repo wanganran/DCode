@@ -9,6 +9,7 @@
 #define REED_SOLOMON_H_
 
 #include <assert.h>
+#include <memory>
 
 class Reed_solomon_code{
 private:
@@ -26,13 +27,21 @@ public:
 	uint8_t* decode(uint8_t * input);
 	~Reed_solomon_code();
 
-    static Reed_solomon_code& get_or_update(int n, int k){
-        static Reed_solomon_code singleton(n,k);
-        if(singleton.n==n && singleton.k==k)return singleton;
-        else{
-            singleton=Reed_solomon_code(n,k);
-            return singleton;
+};
+
+class Reed_solomon_code_buffered{
+private:
+    int n_,k_;
+    std::unique_ptr<Reed_solomon_code> coder_;
+public:
+    Reed_solomon_code_buffered():coder_(nullptr), n_(-1){}
+    std::unique_ptr<Reed_solomon_code>& get_coder(int n, int k){
+        if(n!=n_ || k!=k_) {
+            n_ = n;
+            k_ = k;
+            coder_.reset(new Reed_solomon_code(n,k));
         }
+        return coder_;
     }
 };
 

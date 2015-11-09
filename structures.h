@@ -5,8 +5,8 @@
 #ifndef DCODE_STRUCTURES_H
 #define DCODE_STRUCTURES_H
 
+#include <vector>
 #include "utils/utils.h"
-#include "symbol_scanner.h"
 
 enum class Block_type:uint8_t {
     IDLE=0,
@@ -23,6 +23,7 @@ enum class Error_estimate{
 };
 
 enum class FEC_level{
+    //HIGH means less redundancy.
     HIGH=0,
     MID=1,
     LOW=2
@@ -179,6 +180,16 @@ public:
             }
             if(pos_sec_>=max_pos_)return false;
             block_->get(pos_sec_).set_secondary(mask,data);
+            pos_sec_++;
+            return true;
+        }
+
+        bool skip_secondary(){
+            while(escape_ptr_sec_< ARRSIZE(escape_buffer) && pos_sec_< max_pos_ && escape_buffer[escape_ptr_sec_]==pos_sec_){
+                pos_sec_++;
+                escape_ptr_sec_++;
+            }
+            if(pos_sec_>=max_pos_)return false;
             pos_sec_++;
             return true;
         }

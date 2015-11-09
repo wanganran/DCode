@@ -7,8 +7,9 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include "utils.h"
 
-class Hamming128{
+class Hamming128:public Noncopyable{
 private:
     uint8_t table[4096];
     int code[256];
