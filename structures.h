@@ -287,7 +287,7 @@ public:
 };
 
 struct Tx_PHY_probe{
-    bool fill_block(Tx_block& dest){
+    bool fill_block(Tx_block& dest) const {
         if(!dest.inited())return false;
         auto helper=dest.get_helper();
         //first is palette

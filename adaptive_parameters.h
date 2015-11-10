@@ -36,6 +36,18 @@ public:
 
         return parity?singleton_even:singleton_odd;
     }
+    static Rx_adaptive_parameters& get_newest(bool& out_parity){
+        bool newest;
+        auto& odd=get_global_by_parity(true, newest);
+        if(newest){
+            out_parity=true;
+            return odd;
+        }
+        else{
+            out_parity=false;
+            return get_global_by_parity(false, newest);
+        }
+    }
 };
 
 struct Tx_adaptive_parameters{
@@ -44,8 +56,8 @@ private:
         //TODO: initial configurations
     };
 
-    int next_block_sidelength;
-    int next_color_sec_mask;
+    uint8_t next_block_sidelength;
+    uint8_t next_color_sec_mask;
     FEC_level  next_primary, next_secondary;
     bool has_next;
 
@@ -64,13 +76,13 @@ public:
         return false;
     }
 
-    int block_sidelength;
-    int color_sec_mask;
+    uint8_t block_sidelength;
+    uint8_t color_sec_mask;
     FEC_level FEC_strength_primary;
     FEC_level FEC_strength_secondary;
     bool parity;
 
-    void update_next_frame(int block_sidelength, int color_sec_mask, FEC_level FEC_pri, FEC_level FEC_sec){
+    void update_next_frame(uint8_t block_sidelength, uint8_t color_sec_mask, FEC_level FEC_pri, FEC_level FEC_sec){
         next_block_sidelength=block_sidelength;
         next_color_sec_mask=color_sec_mask;
         next_primary=FEC_pri;

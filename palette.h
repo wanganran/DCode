@@ -9,11 +9,12 @@
 #include <assert.h>
 #include "config.h"
 #include "utils/RGB.h"
+#include "utils/utils.h"
 
 //in charge of managing all the color palettes.
 //in DCode, the data are modulated in three channels RGB independently.
 //if possible, we can enable a secondary channel for each primary channel, to increase 1bit capacity per color.
-class Palette{
+class Palette: public Noncopyable{
 private:
     static const int channel=3, channel_depth=256;
 
@@ -35,8 +36,6 @@ private:
         mask_=7;
     }
 
-    Palette(const Palette& p);
-    Palette& operator =(const Palette& p);
 public:
     static const int BLACK=0;
     static const int WHITE=(1<<channel)-1;
@@ -50,9 +49,9 @@ public:
         friend class Palette;
     private:
         const Palette* palette_;
-        int values_[channel][channel_depth];
+        uint8_t values_[channel][channel_depth];
         Matcher(const Palette* conf):palette_(conf){
-            memset(values_,0,sizeof(int)*256*channel_depth);
+            memset(values_,0,sizeof(uint8_t)*256*channel_depth);
             for(int i=0;i<channel;i++) {
                 for (int j = 0; j < channel_depth; j++)
                     if (j >= conf->primary_thresholds_[i])
@@ -66,11 +65,11 @@ public:
             }
         }
     public:
-        int match(RGB color){
+        uint8_t match(RGB color){
             return values_[0][color.R]|values_[1][color.G]|values_[2][color.B];
         }
 
-        int match_primary(RGB color){
+        uint8_t match_primary(RGB color){
             return match(color)&7;
         }
 
