@@ -88,35 +88,6 @@ Option<int> Symbol_scanner::guess_side_count(Block_anchor anchors) {
 }
 #endif
 
-Symbol_scanner::Block_content Symbol_scanner::Block_anchor::get_block_content(Pixel_reader* reader_, int sidelength) {                                            int side_count) {
-    auto fun_locate = [side_count, left_top, right_top, right_bottom, left_bottom](int x, int y) {
-        int fmx = side_count;
-        int fmy = side_count;
-        int fzx1 = x;
-        int fzy1 = y;
-        int fzx = fmx - x;
-        int fzy = fmy - y;
-
-        auto px = (fzx * fzy * left_top->center_x +
-                   fzx1 * fzy * right_top->center_x +
-                   fzx * fzy1 * left_bottom->center_x +
-                   fzx1 * fzy1 * right_bottom->center_x) / (fmx * fmy);
-        auto py = (fzx * fzy * left_top->center_y +
-                   fzx1 * fzy * right_top->center_y +
-                   fzx * fzy1 * left_bottom->center_y +
-                   fzx1 * fzy1 * right_bottom->center_y) / (fmx * fmy);
-
-        return Point(px, py);
-    };
-    return Symbol_scanner::Block_content(side_count, side_count, [reader_, fun_locate](int x, int y) {
-                                             auto p = fun_locate(x, y);
-                                             return reader_->get_RGB(p.x, p.y);
-                                         },
-                                         [reader_, fun_locate](int x, int y) {
-                                             auto p = fun_locate(x, y);
-                                             return reader_->get_smoothed_RGB(p.x, p.y);
-                                         });
-}
 
 
 //must guarantee vcnt and hcnt are odd

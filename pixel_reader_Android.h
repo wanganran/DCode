@@ -7,7 +7,9 @@
 
 #include <cstdint>
 #include "utils/RGB.h"
-class Pixel_reader_Android{
+#include "utils/utils.h"
+//the objects of this class will only be allocated and deleted by Physical.
+class Pixel_reader_Android: public Noncopyable{
 friend class Physical;
 private:
 	const int width_;

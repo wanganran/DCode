@@ -7,12 +7,12 @@
 
 using namespace std;
 
-static void _push_primary_with_escape(Escaper& escaper, unique_ptr<Tx_block::Tx_block_helper>& helper, uint8_t byte){
+void Modulator::_push_primary_with_escape(Escaper& escaper, Tx_block_helper& helper, uint8_t byte){
     uint8_t escaped[3];
     escaper.escape(byte, escaped);
-    helper->push_primary(escaped[0]);
-    helper->push_primary(escaped[1]);
-    helper->push_primary(escaped[2]);
+    helper.push_primary(escaped[0]);
+    helper.push_primary(escaped[1]);
+    helper.push_primary(escaped[2]);
 }
 static uint8_t _transform_by_mask(uint8_t mask, uint8_t data) {
     switch (mask) {
@@ -78,18 +78,18 @@ static uint8_t _transform_back_by_mask(uint8_t mask, uint8_t data){
     }
 }
 
-static void _fill_rest_block(unique_ptr<Tx_block::Tx_block_helper>& helper){
-    int rest=helper->get_total_symbol_count()%3;
-    while(rest--)helper->push_primary(rest&7);
+void Modulator::_fill_rest_block(Modulator::Tx_block_helper& helper){
+    int rest=helper.get_total_symbol_count()%3;
+    while(rest--)helper.push_primary(rest&7);
 }
 
 void Modulator::modulate_idle(Tx_block& dest){
     auto& parameters=Tx_adaptive_parameters::current();
 
     dest.init(parameters.block_sidelength, Block_type::IDLE, 0, parameters.parity);
-    auto helper=dest.get_helper();
+    Tx_block_helper helper(dest);
 
-    int count=helper->get_total_symbol_count();
+    int count=helper.get_total_symbol_count();
     //it is not necessary to encode secondary channel for IDLE blocks
     //BUT escape still exists.
     for(int i=0;i<count-3;i+=3){
@@ -128,7 +128,7 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
     auto& parameters=Tx_adaptive_parameters::current();
 
     dest.init(parameters.block_sidelength, Block_type::DATA, 0, parameters.parity);
-    auto helper=dest.get_helper();
+    Tx_block_helper helper(dest);
 
     if(max_size==-1)max_size=MAX_INT;
 
@@ -146,7 +146,7 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
 
     //second: calculate
     int k;
-    int n=_calc_msg_size(parameters.FEC_strength_primary, parameters.FEC_strength_secondary, helper->get_total_symbol_count(),parameters.color_sec_mask, k);
+    int n=_calc_msg_size(parameters.FEC_strength_primary, parameters.FEC_strength_secondary, helper.get_total_symbol_count(),parameters.color_sec_mask, k);
     auto& coder=coder_buffered_.get_coder(n,k);
 
     //third: encode
@@ -158,7 +158,7 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
     auto& hamming=Hamming128::get_shared();
     Escaper escaper;
     uint8_t escaped[3];
-    for(int i=0;i<helper->get_total_symbol_count()/3;i++){
+    for(int i=0;i<helper.get_total_symbol_count()/3;i++){
         _push_primary_with_escape(escaper,helper, buffer[i]);
     }
 
@@ -169,24 +169,24 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
         if (parameters.FEC_strength_secondary == FEC_level::HIGH) { // no redundancy
             uint8_t last = 0;
             int last_cnt = 0;
-            for (int i = helper->get_total_symbol_count() / 3; i < n; i++) {
+            for (int i = helper.get_total_symbol_count() / 3; i < n; i++) {
                 int data=(buffer[i]|(last<<8));
                 for (int j = 0; j < (8+last_cnt) / bit_per_symbol; j++) {
                     uint8_t s_data = (data >> (8+last_cnt-bit_per_symbol-j * bit_per_symbol)) & ((1 << bit_per_symbol) - 1);
-                    helper->push_secondary(sec_mask, _transform_by_mask(sec_mask, s_data));
+                    helper.push_secondary(sec_mask, _transform_by_mask(sec_mask, s_data));
                 }
                 last_cnt=(8+last_cnt)%bit_per_symbol;
                 last=data&((1<<last_cnt)-1);
             }
             if (last_cnt != 0)
-                helper->push_secondary(sec_mask, _transform_by_mask(sec_mask, last));
+                helper.push_secondary(sec_mask, _transform_by_mask(sec_mask, last));
         }
         else { //use 12,8 hamming
-            for (int i = helper->get_total_symbol_count() / 3; i < n; i++) {
+            for (int i = helper.get_total_symbol_count() / 3; i < n; i++) {
                 hamming.encode(buffer[i], sec_buffer);
                 //assume 12 can divide bit_per_symbol
                 for (int j = 0; j < 12 / bit_per_symbol; j++) {
-                    helper->push_secondary(sec_mask, _transform_by_mask(sec_mask, sec_buffer+j*bit_per_symbol));
+                    helper.push_secondary(sec_mask, _transform_by_mask(sec_mask, sec_buffer+j*bit_per_symbol));
                 }
             }
         }
@@ -198,7 +198,23 @@ void Modulator::modulate_probe(const Tx_PHY_probe &probe, Tx_block &dest) {
     auto& parameters=Tx_adaptive_parameters::current();
 
     dest.init(parameters.block_sidelength, Block_type::PROBE, 0, parameters.parity);
-    probe.fill_block(dest);
+    Tx_block_helper helper(dest);
+    //first is palette
+    for(int i=0;i<8;i++)
+        for(int j=0;j<8;j++) {
+            helper.push_primary(i);
+            helper.push_secondary(7, j);
+        }
+
+    //then patterns to detect error rate and sharpness
+    for(int i=0;i<helper.get_total_symbol_count()-64;i++){
+        int line=helper.get_actual_pos(helper.seek_primary())/dest.sidelength;
+        if(line%2)
+            helper.push_primary(i%8);
+        else helper.push_primary(7^(i%8));
+
+        helper.push_secondary(7,i%2==0?0:7);
+    }
 }
 
 //Action packet format:
@@ -218,20 +234,88 @@ void Modulator::modulate_action(const Tx_PHY_action &action, Tx_block &dest) {
 
     low_rate_rs_code.encode(buffer);
 
-    auto helper=dest.get_helper();
+    Tx_block_helper helper(dest);
     Escaper escaper;
     for(int i=0;i<16;i++){
         _push_primary_with_escape(escaper, helper, buffer[i]);
     }
 }
 
-//101 means even (false), 010 means odd (true)
-Option<Block_type> Demodulator::get_block_type(Symbol_scanner::Block_content &src) {
-    int hcount=src.get_horizontal_symbol_count();
-    int vcount=src.get_vertical_symbol_count();
 
-    auto c1=src.get_smoothed_color(hcount/2,0);
-    auto c2=src.get_smoothed_color(0, vcount/2);
+Demodulator::Block_content Demodulator::_get_block_content(Pixel_reader* reader_, int sidelength, Symbol_scanner::Block_anchor& anchor, bool parity) {
+    auto left_top = anchor.left_top;
+    auto right_top = anchor.right_top;
+    auto left_bottom = anchor.left_bottom;
+    auto right_bottom = anchor.right_bottom;
+    auto fun_locate = [sidelength, left_top, right_top, right_bottom, left_bottom](int x, int y) {
+        int fmx = sidelength;
+        int fmy = sidelength;
+        int fzx1 = x;
+        int fzy1 = y;
+        int fzx = fmx - x;
+        int fzy = fmy - y;
+
+        auto px = (fzx * fzy * left_top->center_x +
+                   fzx1 * fzy * right_top->center_x +
+                   fzx * fzy1 * left_bottom->center_x +
+                   fzx1 * fzy1 * right_bottom->center_x) / (fmx * fmy);
+        auto py = (fzx * fzy * left_top->center_y +
+                   fzx1 * fzy * right_top->center_y +
+                   fzx * fzy1 * left_bottom->center_y +
+                   fzx1 * fzy1 * right_bottom->center_y) / (fmx * fmy);
+
+        return Point(px, py);
+    };
+    return Block_content(sidelength, [reader_, fun_locate](int x, int y) {
+                             auto p = fun_locate(x, y);
+                             return reader_->get_RGB(p.x, p.y);
+                         },
+                         [reader_, fun_locate](int x, int y) {
+                             auto p = fun_locate(x, y);
+                             return reader_->get_smoothed_RGB(p.x, p.y);
+                         },parity);
+}
+
+//101 means even (false), 010 means odd (true)
+Option<Block_type> Demodulator::get_block_type(Block_content &src) {
+    auto c1=src.get_smoothed_color(4,0);
+    auto c2=src.get_smoothed_color(src.sidelength-4, src.sidelength-1);
+    bool newest;
+    auto& parameters=Rx_adaptive_parameters::get_global_by_parity(src.parameter_parity, newest);
+    auto matcher=parameters.palette_matcher;
+    auto c1m=matcher->match_primary(c1);
+    auto c2m=matcher->match_primary(c2);
+
+    auto c1c=CHECK_PAR2(c1m)?Option((Block_type)(c1m>>1)):None<Block_type>();
+    auto c2c=CHECK_PAR2(c2m)?Option((Block_type)(c2m>.1)):None<Block_type>();
+    if(c1c.empty() && c2c.empty())return None<Block_type>();
+    else if(c1c.empty())return c2c;
+    else if(c2c.empty())return c1c;
+    else if(c1c.get_reference()==c2c.get_reference())return c1c;
+    else return None<Block_type>();
+}
+
+bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &out_len,
+                                  int &missed_len) {
+
+}
+
+bool Demodulator::demodulate_probe(Block_content &src, Rx_PHY_probe_result &probe_dest) {
+    return false;
+}
+
+bool Demodulator::demodulate_action(Block_content &src, Rx_PHY_action_result &action_dest) {
+    return false;
+}
+
+Option<Block_content> Demodulator::get_block_content(Symbol_scanner::Block_anchor &src, Pixel_reader* reader,
+                                                             bool &out_parameter_parity) {
+
+    Point c1p((src.left_top->center_x+src.right_top->center_x)/2, (src.left_top->center_y+src.right_top->center_y)/2);
+    Point c2p((src.left_top->center_x+src.left_bottom->center_x)/2, (src.left_top->center_y+src.left_bottom->center_y)/2);
+
+    auto c1=reader->get_smoothed_RGB(c1p.x,c1p.y);
+    auto c2=reader->get_smoothed_RGB(c2p.x,c2p.y);
 
     bool newest_parity;
     auto& last_parameter=Rx_adaptive_parameters::get_newest(newest_parity);
@@ -240,25 +324,38 @@ Option<Block_type> Demodulator::get_block_type(Symbol_scanner::Block_content &sr
     c1m=(c1m==5?0:(c1m==2?1:-1));
     c2m=(c2m==5?0:(c2m==2?1:-1));
     int parity;
-    if(c1m==-1 && c2m==-1)return None<Block_type>();
+    if(c1m==-1 && c2m==-1)return None<Block_content>();
     else if(c1m==-1)parity=c2m;
     else if(c2m==-1)parity=c1m;
-    else if(c1m!=c2m)return None<Block_type>();
+    else if(c1m!=c2m)return None<Block_content>();
     else parity=c1m;
 
     auto& parameters=Rx_adaptive_parameters::get_global_by_parity(parity, newest_parity);
-    if(parameters)
+    return Some(_get_block_content(reader, parameters.block_sidelength,src,parity));
 }
 
-bool Demodulator::demodulate_data(Symbol_scanner::Block_content &src, uint8_t *data_dest, int &out_len,
-                                  int &missed_len) {
-    return false;
+Demodulator::Block_content_helper::Block_content_helper(Demodulator::Block_content &content):
+        pos_(0),escape_pos_(0), content_(&content),escape_buffer({
+        0,1,2,3,4, content_->sidelength/2, content_->sidelength-2,content_->sidelength-1, //8
+        content_->sidelength+0,content_->sidelength+1,content_->sidelength+2,content_->sidelength*2-2,content_->sidelength*2-1, //5
+        content_->sidelength*2+0,content_->sidelength*2+1,content_->sidelength*3-1, //3
+        (content_->sidelength/2)*content_->sidelength, //1
+        content_->sidelength*(content_->sidelength-2)+0,content_->sidelength*(content_->sidelength-2)+1,content_->sidelength*(content_->sidelength-1)-1, //3
+        content_->sidelength*(content_->sidelength-1)+0,content_->sidelength*(content_->sidelength-1)+1,content_->sidelength*(content_->sidelength-1)+2, //3
+        content_->sidelength*content_->sidelength-4,content_->sidelength*content_->sidelength-3,content_->sidelength*content_->sidelength-2,content_->sidelength*content_->sidelength-1}){} //2
+
+//same as Tx_block_helper::get_total_symbol_count
+int Demodulator::Block_content_helper::get_total_symbol_count() {
+    return content_->sidelength*content_->sidelength
+            -8-3-5-5-4-2;
 }
 
-bool Demodulator::demodulate_probe(Symbol_scanner::Block_content &src, Rx_PHY_probe_result &probe_dest) {
-    return false;
-}
-
-bool Demodulator::demodulate_action(Symbol_scanner::Block_content &src, Rx_PHY_action_result &action_dest) {
-    return false;
+bool Demodulator::Block_content_helper::pull_symbol(RGB& out_color) {
+    while(pos_<ARRSIZE(escape_buffer) && pos_<content_->sidelength*content_->sidelength && escape_buffer[escape_pos_]==pos_) {
+        pos_++;
+        escape_pos_++;
+    }
+    if(pos_>=content_->sidelength*content_->sidelength)return false;
+    out_color=content_->get_center_color(pos_%content_->sidelength,pos_/content_->sidelength);
+    return true;
 }

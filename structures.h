@@ -40,7 +40,7 @@ enum class Packet_type{
 
 /*
  * PHY Block format:
- * | Anchor: 3 sym | Syn: 1 sym | Block_type: 1 sym | Data with anchor and flag | Block type: 1 sym | Syn: 1 sym | Anchor: 3 sym |
+ * | Anchor: 3 sym | Syn: 1 sym | Block_type: 1 sym | Data with anchor and flag | Block type: 1 sym | Syn: 1 sym | Anchor: 2 sym |
  */
 
 struct Tx_block : public Noncopyable{
@@ -86,10 +86,10 @@ public:
         set(sidelength-2,1,COLOR_BLACK);
 
         set(3,0,RGB(syn));
-        set(sidelength-4,sidelength-1,RGB(syn));
+        set(sidelength-3,sidelength-1,RGB(syn));
 
         set(4,0,PAR2(((uint8_t)type)<<1));
-        set(sidelength-5,sidelength-1,PAR2(((uint8_t)type)<<1));
+        set(sidelength-4,sidelength-1,PAR2(((uint8_t)type)<<1));
 
         int mid=sidelength/2;
         set(0,mid,RGB(para_parity?2:5));
@@ -115,99 +115,6 @@ public:
     }
     RGB& get(unsigned int pos){
         return get(pos%sidelength,pos/sidelength);
-    }
-
-    class Tx_block_helper{
-    friend class Tx_block;
-    private:
-        Tx_block* block_;
-        unsigned int pos_pri_;
-        unsigned int pos_sec_;
-        const int max_pos_;
-        int escape_ptr_pri_;
-        int escape_ptr_sec_;
-        int escape_buffer[27];
-
-        Tx_block_helper(Tx_block* block):block_(block), pos_pri_(0), pos_sec_(0), max_pos_(block->sidelength*block->sidelength), escape_ptr_pri_(0),escape_ptr_sec_(0), escape_buffer({
-                0,1,2,3,4, block_->sidelength/2, block_->sidelength-2,block_->sidelength-1, //8
-                block_->sidelength+0,block_->sidelength+1,block_->sidelength+2,block_->sidelength*2-2,block_->sidelength*2-1, //5
-                block_->sidelength*2+0,block_->sidelength*2+1,block_->sidelength*3-1, //3
-                (block_->sidelength/2)*block_->sidelength, //1
-                block_->sidelength*(block_->sidelength-2)+0,block_->sidelength*(block_->sidelength-2)+1,block_->sidelength*(block_->sidelength-1)-1, //3
-                block_->sidelength*(block_->sidelength-1)+0,block_->sidelength*(block_->sidelength-1)+1,block_->sidelength*(block_->sidelength-1)+2, //3
-                block_->sidelength*block_->sidelength-4,block_->sidelength*block_->sidelength-3,block_->sidelength*block_->sidelength-2,block_->sidelength*block_->sidelength-1}){} //2
-
-    public:
-        unsigned int get_actual_pos(unsigned int pos){
-            unsigned int actual_pos=pos+5;
-            if(actual_pos>=block_->sidelength/2)actual_pos++;
-            if(actual_pos>=block_->sidelength-2)actual_pos+=5;
-            if(actual_pos>=block_->sidelength*2-2)actual_pos+=4;
-            if(actual_pos>=block_->sidelength*3-1)actual_pos++;
-            if(actual_pos>=block_->sidelength*block_->sidelength/2)actual_pos++;
-            if(actual_pos>=block_->sidelength*(block_->sidelength-2))actual_pos+=2;
-            if(actual_pos>=block_->sidelength*(block_->sidelength-1)-1)actual_pos+=4;
-            return actual_pos;
-        }
-        int get_total_symbol_count(){
-            return block_->sidelength*block_->sidelength
-                   -8-3-5-5 //anchor
-                    -4-2; //header & footer
-        }
-        bool push_primary(uint8_t data){
-            while(escape_ptr_pri_< ARRSIZE(escape_buffer) && pos_pri_< max_pos_ && escape_buffer[escape_ptr_pri_]==pos_pri_){
-                pos_pri_++;
-                escape_ptr_pri_++;
-            }
-            if(pos_pri_>=max_pos_)return false;
-            block_->set(pos_pri_,RGB(data));
-            pos_pri_++;
-            return true;
-        }
-        int seek_primary(int place=-1){
-            if(place<0){
-                int p=bsearch_less(escape_buffer,ARRSIZE(escape_buffer),pos_pri_);
-                return pos_pri_-p-1;
-            }
-            if(place>=get_total_symbol_count())place=get_total_symbol_count();
-            pos_pri_=get_actual_pos(place);
-
-        }
-        bool push_secondary(uint8_t mask, uint8_t data){
-            while(escape_ptr_sec_< ARRSIZE(escape_buffer) && pos_sec_< max_pos_ && escape_buffer[escape_ptr_sec_]==pos_sec_){
-                pos_sec_++;
-                escape_ptr_sec_++;
-            }
-            if(pos_sec_>=max_pos_)return false;
-            block_->get(pos_sec_).set_secondary(mask,data);
-            pos_sec_++;
-            return true;
-        }
-
-        bool skip_secondary(){
-            while(escape_ptr_sec_< ARRSIZE(escape_buffer) && pos_sec_< max_pos_ && escape_buffer[escape_ptr_sec_]==pos_sec_){
-                pos_sec_++;
-                escape_ptr_sec_++;
-            }
-            if(pos_sec_>=max_pos_)return false;
-            pos_sec_++;
-            return true;
-        }
-
-        int seek_secondary(int place=-1){
-            if(place<0){
-                int p=bsearch_less(escape_buffer,ARRSIZE(escape_buffer),pos_sec_);
-                return pos_sec_-p-1;
-            }
-            if(place>=get_total_symbol_count())place=get_total_symbol_count();
-            pos_sec_=get_actual_pos(place);
-        }
-    };
-
-    //return empty ptr when not initialized
-    std::unique_ptr<Tx_block_helper> get_helper(){
-        if(inited())return std::unique_ptr<Tx_block_helper>(this);
-        else return std::unique_ptr<Tx_block_helper>(nullptr);
     }
 };
 
@@ -287,26 +194,7 @@ public:
 };
 
 struct Tx_PHY_probe{
-    bool fill_block(Tx_block& dest) const {
-        if(!dest.inited())return false;
-        auto helper=dest.get_helper();
-        //first is palette
-        for(int i=0;i<8;i++)
-        for(int j=0;j<8;j++) {
-            helper->push_primary(i);
-            helper->push_secondary(7, j);
-        }
-
-        //then patterns to detect error rate and sharpness
-        for(int i=0;i<helper->get_total_symbol_count()-64;i++){
-            int line=helper->get_actual_pos(helper->seek_primary())/dest.sidelength;
-            if(line%2)
-                helper->push_primary(i%8);
-            else helper->push_primary(7^(i%8));
-
-            helper->push_secondary(7,i%2==0?0:7);
-        }
-    };
+//currently nothing here
 };
 
 struct Tx_PHY_action{

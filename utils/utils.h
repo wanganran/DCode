@@ -8,6 +8,7 @@
 //debug
 #include <functional>
 #include <type_traits>
+#include <assert.h>
 
 #define DEBUG(...) printf(__VA_ARGS__)
 #define WARN(...) {printf("WARNING:\t"); printf(__VA_ARGS__);}
@@ -130,9 +131,13 @@ public:
         if (ptr_)ptr_->~T();
     }
 
-    const T& get_reference_or(const T& def) const{
+    T& get_reference_or(const T& def) const{
         if(!ptr_)return def;
         else return *ptr_;
+    }
+    //may be unsafe!
+    T& get_reference() const{
+        return *ptr_;
     }
 
     T get_or(T &&def) && {
@@ -430,7 +435,10 @@ defer(Func&& func) {
 //encoding related
 inline uint8_t PAR2(uint8_t x){
     x&=6;
-    return (uint8_t)(x|((x&4)>>2)|((x&2)>>1));
+    return (uint8_t)((x&6)|(((x&4)>>2)^((x&2)>>1)));
+}
+inline bool CHECK_PAR2(uint8_t x){
+    return (((x&4)>>2)^((x&2)>>1)^(x&1))==0;
 }
 
 //random 0-7
