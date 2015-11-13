@@ -38,6 +38,9 @@ public:
             idx|=((ptr[i]?1:0)>>i);
         return table[idx];
     }
+    uint8_t decode(int code) const{
+        return table[code];
+    }
 
     void encode(uint8_t src, bool* dest) const{
         int res=code[src];

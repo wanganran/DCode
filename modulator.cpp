@@ -123,7 +123,7 @@ static int _calc_msg_size(FEC_level level_pri, FEC_level level_sec, int total_sy
 //| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) |
 //| 5 bits: reserved |
 int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
-                             bool last_block_is_data, int FID, bool is_start_of_packet, bool is_end_of_packet, Packet_type packet_type,
+                             const Block_meta& meta,
                              int max_size) {
     auto& parameters=Tx_adaptive_parameters::current();
 
@@ -141,8 +141,8 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
 
 
     //first: encode header
-    buffer[0]=(uint8_t)((last_block_is_data?128:0) | ((FID&63)<<1) | (is_start_of_packet?1:0));
-    buffer[1]=(uint8_t)((is_end_of_packet?128:0) | (((int)packet_type)<<5));
+    buffer[0]=(uint8_t)((meta.last_is_data?128:0) | ((meta.FID&63)<<1) | (meta.start_of_packet?1:0));
+    buffer[1]=(uint8_t)((meta.end_of_packet?128:0) | (((int)meta.type)<<5));
 
     //second: calculate
     int k;
@@ -185,7 +185,8 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
             for (int i = helper.get_total_symbol_count() / 3; i < n; i++) {
                 hamming.encode(buffer[i], sec_buffer);
                 //assume 12 can divide bit_per_symbol
-                for (int j = 0; j < 12 / bit_per_symbol; j++) {
+                //first high, then low
+                for (int j = 12/bit_per_symbol-1; j >= 0; j--) {
                     helper.push_secondary(sec_mask, _transform_by_mask(sec_mask, sec_buffer+j*bit_per_symbol));
                 }
             }
@@ -287,7 +288,7 @@ Option<Block_type> Demodulator::get_block_type(Block_content &src) {
     auto c2m=matcher->match_primary(c2);
 
     auto c1c=CHECK_PAR2(c1m)?Option((Block_type)(c1m>>1)):None<Block_type>();
-    auto c2c=CHECK_PAR2(c2m)?Option((Block_type)(c2m>.1)):None<Block_type>();
+    auto c2c=CHECK_PAR2(c2m)?Option((Block_type)(c2m>>1)):None<Block_type>();
     if(c1c.empty() && c2c.empty())return None<Block_type>();
     else if(c1c.empty())return c2c;
     else if(c2c.empty())return c1c;
@@ -295,9 +296,78 @@ Option<Block_type> Demodulator::get_block_type(Block_content &src) {
     else return None<Block_type>();
 }
 
+//Data packet Link layer format:
+//| 1 bit: last_is_data | 6 bits: FID |
+//| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) |
+//| 5 bits: reserved |
 bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &out_len,
-                                  int &missed_len) {
+                                  Block_meta& out_meta) {
+    uint8_t buffer_sec[576];
+    uint8_t buffer_data[256];
 
+    bool newest;
+    auto &parameters = Rx_adaptive_parameters::get_global_by_parity(src.parameter_parity, newest);
+
+    Block_content_helper helper(src);
+    int len = helper.get_total_symbol_count();
+    Escaper escaper;
+    uint8_t *buffer_ptr = buffer_data;
+    for (int i = 0; i < len; i++) {
+        RGB color;
+        helper.pull_symbol(color);
+        auto sym = parameters.palette_matcher->match(color);
+        if (parameters.color_sec_mask == 0)
+            buffer_ptr = escaper.input(sym & 7, buffer_ptr);
+        else {
+            buffer_ptr = escaper.input(sym & 7, buffer_ptr);
+            buffer_sec[i] = _transform_back_by_mask(parameters.color_sec_mask, sym >> 3);
+        }
+    }
+    int bit_per_symbol = (parameters.color_sec_mask & 1) + ((parameters.color_sec_mask >> 1) & 1) +
+                         ((parameters.color_sec_mask >> 2) & 1);
+
+    if (parameters.FEC_strength_secondary == FEC_level::HIGH) {
+        int last = 0;
+        int last_cnt = 0;
+        for (int i = 0; i < len; i++) {
+            last = ((last << bit_per_symbol) | buffer_sec[i]);
+            last_cnt += bit_per_symbol;
+            if (last_cnt >= 8) {
+                *(buffer_ptr++) = (uint8_t) (last >> (last_cnt - 8));
+                last_cnt -= 8;
+                last ^= (last >> last_cnt << last_cnt);
+            }
+        }
+    }
+    else {
+        auto &hamming = Hamming128::get_shared();
+        int symbol_per_code = 12 / bit_per_symbol;
+        for (int i = 0; i < len; i += symbol_per_code) {
+            if (i + symbol_per_code > len)break;
+            int code = 0;
+            for (int j = 0; j < symbol_per_code; j++)
+                code = ((code << symbol_per_code) | buffer_sec[i + j]);
+            *(buffer_ptr++) = hamming.decode(code);
+        }
+    }
+    //decode
+    int n = (int) (buffer_ptr - buffer_data);
+    int k;
+    int n_should = _calc_msg_size(parameters.FEC_strength_primary, parameters.FEC_strength_secondary,
+                                  helper.get_total_symbol_count(), parameters.color_sec_mask, k);
+    assert(n == n_should);
+    auto &decoder = coder_buffered_.get_coder(n, k);
+    if (decoder->decode(buffer_data)) {
+        out_len = n - k;
+        memcpy(data_dest, buffer_data + 2, n - k - 2);
+        out_meta.last_is_data = (buffer_data[0] >> 7);
+        out_meta.FID = ((buffer_data[0] >> 1) & 63);
+        out_meta.start_of_packet = (buffer_data[0] & 1) == 1;
+        out_meta.end_of_packet = (buffer_data[1] >> 7) == 1;
+        out_meta.type = (Packet_type) ((buffer_data[1] >> 5) & 3);
+        return true;
+    }
+    else return false;
 }
 
 bool Demodulator::demodulate_probe(Block_content &src, Rx_PHY_probe_result &probe_dest) {

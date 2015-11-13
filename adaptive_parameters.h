@@ -19,6 +19,7 @@ public:
 
     uint64_t update_tick;
     int block_sidelength;
+    uint8_t color_sec_mask;
     std::unique_ptr<Palette::Matcher> palette_matcher;
     std::unique_ptr<Palette::Analyzer> palette_analyzer;
     FEC_level FEC_strength_primary;

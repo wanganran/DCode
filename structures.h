@@ -36,6 +36,13 @@ enum class Packet_type{
     COMBINED_RETRANSMISSION
 };
 
+struct Block_meta{
+    bool last_is_data;
+    bool start_of_packet;
+    bool end_of_packet;
+    int FID;
+    Packet_type type;
+};
 // Transmitter related structures
 
 /*

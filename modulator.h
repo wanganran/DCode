@@ -150,7 +150,7 @@ public:
 
     //need some extra info: last block is data? frame ID? is start/end of packet? current packet type?
     int modulate_data(const uint8_t* source_ptr, Tx_block& dest,
-                      bool last_block_is_data, int FID, bool is_start_of_packet, bool is_end_of_packet, Packet_type packet_type,
+                      const Block_meta& meta,
                       int max_size=-1);
 
     //Tx->Rx
@@ -163,7 +163,7 @@ public:
 class Demodulator: public Noncopyable {
 private:
     Block_content _get_block_content(Pixel_reader* reader, int sidelength, Symbol_scanner::Block_anchor& anchor, bool parity);
-
+    Reed_solomon_code_buffered coder_buffered_;
     class Block_content_helper{
     private:
         int pos_;
@@ -194,7 +194,7 @@ public:
     Option<Block_content> get_block_content(Symbol_scanner::Block_anchor& src,Pixel_reader* reader, bool& out_parameter_parity);
     Option<Block_type> get_block_type(Block_content& src);
     bool demodulate_data(Block_content& src,
-                         uint8_t* data_dest, int& out_len, int& missed_len);
+                         uint8_t* data_dest, int& out_len, Block_meta& out_meta);
     bool demodulate_probe(Block_content& src,
                           Rx_PHY_probe_result& probe_dest);
     bool demodulate_action(Block_content& src,
