@@ -4,6 +4,7 @@
 
 #include "modulator.h"
 #include "utils/hamming128.h"
+#include "utils/utils.h"
 
 using namespace std;
 
@@ -195,6 +196,9 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
     return length;
 }
 
+static const uint8_t GRAY_CODE[8]={0,1,3,2,6,7,5,4};
+static const uint8_t GRAY_POS[8]={1,2,1,4,1,2,1,4};
+
 void Modulator::modulate_probe(const Tx_PHY_probe &probe, Tx_block &dest) {
     auto& parameters=Tx_adaptive_parameters::current();
 
@@ -209,12 +213,14 @@ void Modulator::modulate_probe(const Tx_PHY_probe &probe, Tx_block &dest) {
 
     //then patterns to detect error rate and sharpness
     for(int i=0;i<helper.get_total_symbol_count()-64;i++){
-        int line=helper.get_actual_pos(helper.seek_primary())/dest.sidelength;
+        auto pos=helper.get_actual_pos(helper.seek_primary());
+        int line=pos/dest.sidelength;
+        int col=pos%dest.sidelength;
         if(line%2)
-            helper.push_primary(i%8);
-        else helper.push_primary(7^(i%8));
+            helper.push_primary(GRAY_CODE[col%8]);
+        else helper.push_primary(GRAY_CODE[7^(col%8)]);
 
-        helper.push_secondary(7,i%2==0?0:7);
+        helper.push_secondary(7,col%2==0?0:7);
     }
 }
 
@@ -267,7 +273,7 @@ Demodulator::Block_content Demodulator::_get_block_content(Pixel_reader* reader_
 
         return Point(px, py);
     };
-    return Block_content(sidelength, [reader_, fun_locate](int x, int y) {
+    return Block_content(sidelength, fun_locate, [reader_, fun_locate](int x, int y) {
                              auto p = fun_locate(x, y);
                              return reader_->get_RGB(p.x, p.y);
                          },
@@ -370,12 +376,158 @@ bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &o
     else return false;
 }
 
-bool Demodulator::demodulate_probe(Block_content &src, Rx_PHY_probe_result &probe_dest) {
-    return false;
+bool Demodulator::demodulate_probe(Block_content &src, Pixel_reader* reader, Rx_PHY_probe_result &probe_dest) {
+    Block_content_helper helper(src);
+    //first palette
+    for(int i=0;i<64;i++)
+        helper.pull_symbol_smoothed(probe_dest.received_probe_colors[i]);
+    //then error rates
+    int len=helper.get_total_symbol_count();
+    //store the correct and error symbol number of primary channel
+    int correct_sym=0;
+    int err_sym=0;
+    //store the secondary gap of three channel
+    //[i][j][k] means ith channel, jth primary data, kth secondary data. Result is R/G/B level
+    int sec_stat[3][2][2];
+    int sec_stat_sqr[3][2][2];
+    int sec_stat_num[3][2][2];
+    bool newest;
+    auto& parameters=Rx_adaptive_parameters::get_global_by_parity(src.parameter_parity, newest);
+    PointF last_pt;
+    auto last_col=-2;
+    int gradient_fz=0;
+    int gradient_fm=0;
+
+    for(int i=0;i<len-64;i++){
+        auto pos=helper.get_actual_pos();
+        auto line=pos/src.sidelength;
+        auto col=pos%src.sidelength;
+        PointF curr_pt=src.get_center_point(col,line);
+        RGB dest;
+        helper.pull_symbol(dest);
+        uint8_t probe=parameters.palette_matcher->match_primary(dest);
+        if(line%2==0)probe^=7;
+
+        if(probe==GRAY_CODE[col%8]) {
+            correct_sym++;
+
+            int code = GRAY_CODE[col % 8];
+            sec_stat[2][code & 1][col % 2] += dest.B;
+            sec_stat_sqr[2][code & 1][col % 2] += dest.B * dest.B;
+            sec_stat_num[2][code & 1][col % 2]++;
+
+            sec_stat[1][code & 2][col % 2] += dest.G;
+            sec_stat_sqr[1][code & 2][col % 2] += dest.G * dest.G;
+            sec_stat_num[1][code & 2][col % 2]++;
+
+            sec_stat[0][code & 4][col % 2] += dest.R;
+            sec_stat_sqr[0][code & 4][col % 2] += dest.R * dest.R;
+            sec_stat_num[0][code & 4][col % 2]++;
+
+            if(col-last_col==1){
+                //gradient exists
+                //sample 8 points
+                RGB samples[8];
+
+                for(int t=0;t<8;i++){
+                    auto pt = last_pt*(t/8.0)+curr_pt*(1-t/8.0);
+                    samples[t]=reader->get_RGB(pt.x,pt.y);
+                }
+                auto last_code=GRAY_CODE[last_col%8];
+                int smax=-1,smin=256;
+                int scount=0;
+                int squat1,squat3;
+                switch(GRAY_POS[last_code]) {
+                    case 4: //R
+                        for (int t = 0; t < 8; t++) {
+                            smax = max(smax, (int)(samples[t].R));
+                            smin = min(smin, (int)(samples[t].R));
+                        }
+                        squat1 = (smin * 3 + smax) / 4;
+                        squat3 = (smax * 3 + smin) / 4;
+                        for (int t = 0; t < 8; t++)
+                            if (samples[t].R < squat3 && samples[t].R >= squat1)scount++;
+                    case 2: //G
+                        for (int t = 0; t < 8; t++) {
+                            smax = max(smax, (int)(samples[t].G));
+                            smin = min(smin, (int)(samples[t].G));
+                        }
+                        squat1 = (smin * 3 + smax) / 4;
+                        squat3 = (smax * 3 + smin) / 4;
+                        for (int t = 0; t < 8; t++)
+                            if (samples[t].G < squat3 && samples[t].G >= squat1)scount++;
+                    case 1: //B
+                        for (int t = 0; t < 8; t++) {
+                            smax = max(smax, (int)(samples[t].B));
+                            smin = min(smin, (int)(samples[t].B));
+                        }
+                        squat1 = (smin * 3 + smax) / 4;
+                        squat3 = (smax * 3 + smin) / 4;
+                        for (int t = 0; t < 8; t++)
+                            if (samples[t].B < squat3 && samples[t].B >= squat1)scount++;
+
+                }
+                gradient_fm+=8;
+                gradient_fz+=scount;
+            }
+        }
+        else err_sym++;
+
+    }
+
+    if(gradient_fz*8<=gradient_fm)probe_dest.sharpness=Rx_PHY_probe_result::Edge_sharpness::SHARP;
+    else if(gradient_fz*4<=gradient_fm)probe_dest.sharpness=Rx_PHY_probe_result::Edge_sharpness::MEDIUM;
+    else probe_dest.sharpness=Rx_PHY_probe_result::Edge_sharpness::BLUR;
+
+    if(err_sym*20<correct_sym) probe_dest.error_estimate_pri=Error_estimate::LOW;
+    else if(err_sym*10<correct_sym) probe_dest.error_estimate_pri=Error_estimate::MID;
+    else probe_dest.error_estimate_pri=Error_estimate::HIGH;
+
+    for(int ch=0;ch<3;ch++){
+        double err_prob[2];
+        for(int pr=0;pr<2;pr++){
+            int mean[2],var[2];
+            for(int sr=0;sr<2;sr++){
+                if(sec_stat_num==0){mean[sr]=0;var[sr]=100;}
+                mean[sr]=sec_stat[ch][pr][sr]/sec_stat_num[ch][pr][sr];
+                var[sr]=sec_stat_sqr[ch][pr][sr]-mean[sr]*mean[sr];
+            }
+            //assume gaussian distribution
+            auto delta=mean[1]-mean[0];
+            err_prob[pr]=(1-Normal_dist::N_cul(mean[0],sqrt(var[0]),delta))+Normal_dist::N_cul(mean[1],sqrt(var[1]),-delta);
+        }
+        auto prob=max(err_prob[0],err_prob[1]);
+        probe_dest.error_estimate_sec[ch]=(prob<0.05?Error_estimate::LOW:(prob<0.15?Error_estimate::MID:Error_estimate::HIGH));
+    }
+
+    return true;
 }
 
 bool Demodulator::demodulate_action(Block_content &src, Rx_PHY_action_result &action_dest) {
-    return false;
+    static Reed_solomon_code low_rate_rs_code(16,8);
+    Block_content_helper helper(src);
+    bool newest;
+    auto& parameters=Rx_adaptive_parameters::get_global_by_parity(src.parameter_parity,newest);
+    RGB dest;
+    helper.pull_symbol(dest);
+    Escaper escaper;
+
+    uint8_t buffer[16];
+    uint8_t* ptr=buffer;
+    while(ptr!=buffer+16)
+        ptr=escaper.input(parameters.palette_matcher->match_primary(dest),ptr);
+
+    if(low_rate_rs_code.decode(buffer)){
+        action_dest.next_sidelength=buffer[0];
+        action_dest.next_expected_parity=(buffer[1]&128)>0?true:false;
+        action_dest.color_sec_mask=(uint8_t)((buffer[1]>>4)&7);
+        action_dest.FEC_level_pri=(FEC_level)((buffer[1]>>2)&3);
+        action_dest.FEC_level_sec=(FEC_level)((buffer[1])&3);
+        action_dest.self_FPS=buffer[2];
+        return true;
+    }
+    else
+        return false;
 }
 
 Option<Block_content> Demodulator::get_block_content(Symbol_scanner::Block_anchor &src, Pixel_reader* reader,
@@ -427,5 +579,14 @@ bool Demodulator::Block_content_helper::pull_symbol(RGB& out_color) {
     }
     if(pos_>=content_->sidelength*content_->sidelength)return false;
     out_color=content_->get_center_color(pos_%content_->sidelength,pos_/content_->sidelength);
+    return true;
+}
+bool Demodulator::Block_content_helper::pull_symbol_smoothed(RGB &out_color) {
+    while(pos_<ARRSIZE(escape_buffer) && pos_<content_->sidelength*content_->sidelength && escape_buffer[escape_pos_]==pos_) {
+        pos_++;
+        escape_pos_++;
+    }
+    if(pos_>=content_->sidelength*content_->sidelength)return false;
+    out_color=content_->get_smoothed_color(pos_%content_->sidelength,pos_/content_->sidelength);
     return true;
 }

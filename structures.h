@@ -17,8 +17,7 @@ enum class Block_type:uint8_t {
 
 enum class Error_estimate{
     HIGH,
-    MID_HIGH,
-    MID_LOW,
+    MID,
     LOW
 };
 
@@ -215,13 +214,13 @@ struct Tx_PHY_action{
 //Receiver related structures
 
 struct Rx_PHY_probe_result{
-    std::vector<RGB> received_probe_colors[64];
+    RGB received_probe_colors[64];
     enum class Edge_sharpness{
         SHARP,
         MEDIUM,
         BLUR
     } sharpness;
-    Error_estimate error_estimate_pri, error_estimate_sec;
+    Error_estimate error_estimate_pri, error_estimate_sec[3];
 };
 
 struct Rx_PHY_action_result: public Tx_PHY_action{

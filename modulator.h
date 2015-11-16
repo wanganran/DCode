@@ -174,6 +174,8 @@ private:
         Block_content_helper(Block_content& content);
         int get_total_symbol_count();
         bool pull_symbol(RGB& out_color);
+        bool pull_symbol_smoothed(RGB& out_color);
+        int get_actual_pos(){return pos_;}
     };
 
 public:
@@ -183,19 +185,21 @@ public:
         bool parameter_parity;
         Lazy_mat<RGB> centered_;
         Lazy_mat<RGB> smoothed_;
+        std::function<Point(int,int)> locator_;
         int sidelength;
         RGB get_center_color(int x_id, int y_id){return centered_[x_id][y_id];}
         RGB get_smoothed_color(int x_id, int y_id){return smoothed_[x_id][y_id];}
+        Point get_center_point(int x_id, int y_id){return locator_(x_id,y_id);}
 
-        Block_content(int sidelen, std::function<RGB(int,int)> func_center, std::function<RGB(int,int)> func_smoothed, bool parity):
-                sidelength(sidelen),centered_(Lazy_mat<RGB>(sidelen,sidelen,func_center)),smoothed_(Lazy_mat<RGB>(sidelen,sidelen,func_smoothed)), parameter_parity(parity){}
+        Block_content(int sidelen, std::function<Point(int,int)> locator, std::function<RGB(int,int)> func_center, std::function<RGB(int,int)> func_smoothed, bool parity):
+                sidelength(sidelen), locator_(locator), centered_(Lazy_mat<RGB>(sidelen,sidelen,func_center)),smoothed_(Lazy_mat<RGB>(sidelen,sidelen,func_smoothed)), parameter_parity(parity){}
     };
 
     Option<Block_content> get_block_content(Symbol_scanner::Block_anchor& src,Pixel_reader* reader, bool& out_parameter_parity);
     Option<Block_type> get_block_type(Block_content& src);
     bool demodulate_data(Block_content& src,
                          uint8_t* data_dest, int& out_len, Block_meta& out_meta);
-    bool demodulate_probe(Block_content& src,
+    bool demodulate_probe(Block_content& src, Pixel_reader* reader,
                           Rx_PHY_probe_result& probe_dest);
     bool demodulate_action(Block_content& src,
                            Rx_PHY_action_result& action_dest);
