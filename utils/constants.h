@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 
 
-class Constants{
+class Constants: public Noncopyable{
 private:
     inline static bool __exists (const char* name) {
         struct stat buffer;
@@ -19,8 +19,6 @@ private:
     static const char* CONST_PATH="/Users/wanganran/const.txt";
     int64_t table_[1024];//maximum 1024 entries
     Constants(){}
-    Constants(const Constants&);
-    void operator =(const Constants&);
 public:
     enum{
         //All necessary constants name
@@ -49,17 +47,22 @@ public:
         TRACK_SEARCH_RATIO=45, //def: 5.0           the ratio between the search ratio in pixel and the last symbol size in pixel.
 
         //category #3: recognition related
-        //range 64 to 96
+        //range 64 to 95
 
         GUESS_BLOCK_SIZE_PROB_THRES=64, //def:0.01  the threshold of the multiply of all 8 probabilities of guessing a certain block size.
         LOCATOR_LIKELIHOOD_RANGE=65, //def:0.5      let it be x, then the ratio of the maximum and minimum locator lilelihood is no less than x.
+
+        //category #4: painter related
+        //range 96 to 127
+        MARGIN_LEFT_BLOCK_RATIO=96,
+        MARGIN_TOP_BLOCK_RATIO=97
     };
 
-    static Constants* current(){
-        static Constants* current_=NULL;
+    static std::unique_ptr<Constants>& current(){
+        static std::unique_ptr<Constants> current_=NULL;
         if(current_)return current_;
         else{
-            current_=new Constants();
+            current_.reset(new Constants());
             const char* path=CONST_PATH;
             if(__exists(path)) {
                 FILE* f=fopen(path, "rb");
@@ -89,6 +92,9 @@ public:
                 current_->get<double>(GUESS_BLOCK_SIZE_PROB_THRES)=0.01;
                 current_->get<double>(LOCATOR_LIKELIHOOD_RANGE)=0.5;
 
+                current_->get<double>(MARGIN_LEFT_BLOCK_RATIO)=0.5;
+                current_->get<double>(MARGIN_TOP_BLOCK_RATIO)=0.5;
+
                 FILE* f=fopen(path,"wb");
                 fwrite(current_->table_,sizeof(int64_t),1024,f);
                 fclose(f);
@@ -98,7 +104,7 @@ public:
     }
 
     template<typename T>
-            T& get(int name){
+    T& get(int name){
         assert(name<1024);
         int64_t* ptr=table_+name;
         return *((T*)ptr);

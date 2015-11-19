@@ -7,20 +7,9 @@
 
 #include "structures.h"
 
-enum class Packet_type{
-    DATA,
-    PACKED_RETRANS,
-    SINGLE_RETRANS
-};
-
-class packet{
-public:
-    Packet_type type;
-    uint8_t* data;
-    int len;
-
-    bool transform_to_blocks(Block* dest, int max_len);
-    bool from_captured_blocks(Segment* segs, int len);
+class Packet_encoder{
+    static int encode(const Packet& src, Tx_block* buffer);
+    static int decode(Rx_segment* src, Packet& dest);
 };
 
 #endif //DCODE_PACKET_H

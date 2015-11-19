@@ -24,7 +24,7 @@ private:
     Blocking_queue<uint8_t*> buffer_;
 public:
 
-    Screen_fetcher_Android(Config& conf);
+    Screen_fetcher_Android();
     ~Screen_fetcher_Android();
 
     //to JNI

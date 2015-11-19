@@ -5,6 +5,8 @@
 #ifndef DCODE_CONFIG_H
 #define DCODE_CONFIG_H
 
+#include <sys/stat.h>
+
 struct Config{
 private:
     inline static bool __exists (const char* name) {
@@ -12,12 +14,12 @@ private:
         return (stat (name, &buffer) == 0);
     }
     static const char* CONFIG_PATH="/Users/wanganran/config.txt";
-    int read_int(FILE* f){
+    static int read_int(FILE* f){
         int res;
         fscanf(f, "%d", &res);
         return res;
     }
-    double read_double(FILE* f){
+    static double read_double(FILE* f){
         double res;
         fscanf(f, "%lld", &res);
         return res;
@@ -77,15 +79,15 @@ public:
             barcode_config(std::move(b_config)),
             performance_config(std::move(p_config)), recognition_config(r_config) {}
 
-    static Config* current(){
-        static Config* singleton= nullptr;
+    static std::unique_ptr<Config>& current(){
+        static std::unique_ptr<Config> singleton(nullptr);
         if(singleton)return singleton;
         else{
             if(!__exists(CONFIG_PATH)) {
                 FILE* fp=fopen(CONFIG_PATH, "w");
-                fprintf("%d %d %d %d\n", 1920,1080,1902,1080);
-                fprintf("%d %d %d %d\n", 12,16,20,24);
-                fprintf("%d %d\n",2,10);
+                fprintf(fp,"%d %d %d %d\n", 1920,1080,1902,1080);
+                fprintf(fp,"%d %d %d %d\n", 12,16,20,24);
+                fprintf(fp,"%d %d\n",2,10);
             }
             FILE *fp = fopen(CONFIG_PATH, "r");
             int tx_width = read_int(fp);
@@ -109,13 +111,13 @@ public:
             double vignette_width=read_double(fp);
             int distortion_level=read_int(fp);
 
-            singleton = new Config(
+            singleton.reset(new Config(
                 Hardware_config(tx_width, tx_height, rx_width, rx_height),
                 Barcode_config(supported_block_size_0, supported_block_size_1, supported_block_size_2,
                                supported_block_size_3, vcount,hcount),
                 Performance_config(thread_count, LDPC_max_iteration),
                 Recognition_config(initial_color_channel_threshold,vignette_depth,vignette_width,distortion_level)
-            );
+            ));
 
             return singleton;
         }

@@ -42,6 +42,22 @@ struct Block_meta{
     int FID;
     Packet_type type;
 };
+
+
+class Packet{
+public:
+    Packet_type type;
+    uint8_t* data;
+    int length;
+    Packet(Packet_type pkttype, const uint8_t* pktdata, int len):type(pkttype),data(new uint8_t[len]),length(len){
+        memcpy(data,pktdata,len);
+    }
+
+    ~Packet() {
+        delete[] data;
+    }
+};
+
 // Transmitter related structures
 
 /*
@@ -143,17 +159,17 @@ public:
     void reset(){
         inited_=false;
     }
-    Tx_block& get_block_ref(int x, int y){
+    Tx_block& get_block_ref(int x, int y) const{
         return content_[x+y*horizontal_count];
     }
-    int get_total_symbol_vertical_count_with_border(int sidelength){
+    int get_total_symbol_vertical_count_with_border(int sidelength) const{
         return vertical_count*sidelength+5;
     }
-    int get_total_symbol_horizontal_count_with_border(int sidelength){
+    int get_total_symbol_horizontal_count_with_border(int sidelength) const{
         return horizontal_count*sidelength+5;
     }
     //assume the corresponded block is inited
-    const RGB& get_symbol_at_with_border(int x, int y, int sidelength){
+    const RGB& get_symbol_at_with_border(int x, int y, int sidelength) const{
         static const int BORDERS_LT[][3]={{0,1,0},{1,1,0},{0,0,0}};
         static const int BORDERS_RB[][2]={{0,0},{0,1}};
         static const int BORDERS_RT[][2]={{0,1},{0,1},{0,0}};
@@ -231,18 +247,18 @@ private:
 
     bool inited_;
 public:
-
-    int frame_id;
+    Block_meta metadata;
     int block_id;
-    bool is_start_of_packet;
-    bool is_end_of_packet;
     uint8_t* data;
     int data_len;
 
 
     Rx_segment():inited_(false),data(nullptr),data_len(0){}
 
-    void init(int len){
+    void init_as_non_segment(){
+        init_as_segment(0);
+    }
+    void init_as_segment(int len){
         if(data_len!=len){
             if(data)delete[] data;
             data=new uint8_t[len];
@@ -254,6 +270,7 @@ public:
         inited_=false;
     }
     bool inited(){return inited_;}
+    bool is_non_segment(){return inited() && data_len==0;}
     ~Segment(){
         if(data)delete[] data;
     }
@@ -272,20 +289,70 @@ struct Rx_frame: public Noncopyable{
         }
     }
 };
-struct Rx_window{
+
+struct Tx_window: public Noncopyable{
+    const static int WINDOW_SIZE_HIGH=10;
+    const static int WINDOW_SIZE_LOW=10;
+private:
+    Packet* frames_high_[WINDOW_SIZE_HIGH];
+    Packet* frames_low_[WINDOW_SIZE_LOW];
+
+    int top_;
+    int tail_;
+public:
+    Tx_window():top_(0),tail_(0){
+
+    }
+    //won't block
+    bool push_packet(Packet* pkt, bool high_priority);
+
+    Packet* pull_packet();
+};
+struct Rx_window: public Noncopyable{
     const static int WINDOW_SIZE=64;
 private:
-    std::vector<Rx_frame> frames;
+    Rx_segment* segments_;
+    int segments_count_;
+    int top_;
+    int tail_;
+    int newest_fid_;
 public:
-    int top;
-    int tail;
 
-    Rx_frame& activate(int frameId, bool& replaced);
+    Rx_window():top_(0),tail_(0){
+        auto& config=Config::current();
+        segments_count_=config->barcode_config.vertical_block_count*config->barcode_config.horizontal_block_count*WINDOW_SIZE;
+        segments_=new Rx_segment[segments_count_];
+    }
+    ~Rx_window(){
+        delete[] segments_;
+    }
+    Rx_segment* tail(int& out_skip) {
+        if (top_ == tail_)return nullptr;
+        out_skip = 0;
+        int tail = tail_, top = top_;
+        if (tail > top)
+            top += segments_count_;
+        while (tail < top) {
+            if (!segments_[tail%segments_count_].inited()) {
+                out_skip++;
+                tail++;
+            }
+            else if (!segments_[tail%segments_count_].is_non_segment())
+                tail++;
+            else {
+                if (segments_[tail%segments_count_].metadata.FID > newest_fid_ - 2);
+                tail++;
+            }
+        }
 
-    Rx_frame& get_frame(int frameId);
+    }
+    bool pop();
 
-    //frames which id<=till_frameId will be removed.
-    bool truncate_frames(int till_frameId);
+    //for write
+    bool as_non_segment(int FID, int block_id, bool& replaced);
+    Rx_segment* as_segment(Block_meta meta, int block_id, uint8_t* data, int len, bool& replaced);
+
+    bool push();
 };
 
 #endif //DCODE_STRUCTURES_H
