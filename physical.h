@@ -58,5 +58,4 @@ public:
 	void submit_screen_painter(Screen_painter* mem);
 };
 
-typedef Physical_Android Physical;
 #endif

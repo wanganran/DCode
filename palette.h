@@ -209,15 +209,15 @@ public:
     };
 
     std::unique_ptr<Matcher> get_matcher() const{
-        return new Matcher(this);
+        return std::unique_ptr<Matcher>(new Matcher(this));
     }
 
     std::unique_ptr<Analyzer> get_analyzer() const{
-        return new Analyzer(this);
+        return std::unique_ptr<Analyzer>(new Analyzer(this));
     }
 
     std::unique_ptr<Adjuster> get_adjuster(){
-        return new Adjuster(this);
+        return std::unique_ptr<Adjuster>(new Adjuster(this));
     }
 
     //return the bit mask

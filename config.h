@@ -6,6 +6,8 @@
 #define DCODE_CONFIG_H
 
 #include <sys/stat.h>
+#include <stdio.h>
+#include <utility>
 
 struct Config{
 private:
@@ -13,7 +15,7 @@ private:
         struct stat buffer;
         return (stat (name, &buffer) == 0);
     }
-    static const char* CONFIG_PATH="/Users/wanganran/config.txt";
+    static const char* CONFIG_PATH(){return "/Users/wanganran/config.txt";}
     static int read_int(FILE* f){
         int res;
         fscanf(f, "%d", &res);
@@ -21,7 +23,7 @@ private:
     }
     static double read_double(FILE* f){
         double res;
-        fscanf(f, "%lld", &res);
+        fscanf(f, "%llf", &res);
         return res;
     }
 public:
@@ -60,13 +62,13 @@ public:
         const int vignette_depth;
         const double vignette_width;
 
-        const enum{
+        enum class Distortion_level{
             LOW_DISTORTION,
             MEDIUM_DISTORTION,
             HIGH_DISTORTION
         } distortion_level;
 
-        Recognition_config(int _initial_color_channel_threshold, int _vignette_depth, int _vignette_width, int _distortion_level):
+        Recognition_config(int _initial_color_channel_threshold, int _vignette_depth, int _vignette_width, Distortion_level _distortion_level):
                 initial_color_channel_threshold(_initial_color_channel_threshold),
                 vignette_depth(_vignette_depth),
                 vignette_width(_vignette_width),
@@ -83,13 +85,13 @@ public:
         static std::unique_ptr<Config> singleton(nullptr);
         if(singleton)return singleton;
         else{
-            if(!__exists(CONFIG_PATH)) {
-                FILE* fp=fopen(CONFIG_PATH, "w");
+            if(!__exists(CONFIG_PATH())) {
+                FILE* fp=fopen(CONFIG_PATH(), "w");
                 fprintf(fp,"%d %d %d %d\n", 1920,1080,1902,1080);
                 fprintf(fp,"%d %d %d %d\n", 12,16,20,24);
                 fprintf(fp,"%d %d\n",2,10);
             }
-            FILE *fp = fopen(CONFIG_PATH, "r");
+            FILE *fp = fopen(CONFIG_PATH(), "r");
             int tx_width = read_int(fp);
             int tx_height = read_int(fp);
             int rx_width = read_int(fp);
@@ -124,5 +126,4 @@ public:
     }
 };
 
-#define ANDROID_PLATFORM
 #endif

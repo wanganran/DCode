@@ -9,6 +9,7 @@
 #include <vector>
 #include <math.h>
 #include <array>
+#include <queue>
 #include "config.h"
 #ifdef ANDROID_PLATFORM
 #include "physical.h"
@@ -20,7 +21,6 @@
 
 //this class aim to locate locators when nothing about locators is known.
 class Locator_scanner{
-    class Locator_scanner_result;
 private:
 	const Pixel_reader* reader_;
 	const Palette* shared_palette_;

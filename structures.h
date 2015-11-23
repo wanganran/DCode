@@ -7,6 +7,8 @@
 
 #include <vector>
 #include "utils/utils.h"
+#include "utils/RGB.h"
+#include "config.h"
 
 enum class Block_type:uint8_t {
     IDLE=0,
@@ -227,6 +229,23 @@ struct Tx_PHY_action{
     int self_FPS;
 };
 
+struct Ack {
+    static const int MAX_ACK_COUNT=8;
+    //(FID,BID,is_fully_damaged) pairs
+    Tp<int, int, bool> blocks_to_acked[MAX_ACK_COUNT];
+    int count;
+
+    Ack():count(0){}
+
+    bool operator ==(const Ack& rhs){return this->count==0 && rhs.count==0;}
+    bool operator !=(const Ack& rhs){return !(*this==rhs);}
+
+    static Ack& empty() {
+        static Ack singleton;
+        return singleton;
+    }
+};
+
 //Receiver related structures
 
 struct Rx_PHY_probe_result{
@@ -251,6 +270,7 @@ public:
     int block_id;
     uint8_t* data;
     int data_len;
+    int64_t rec_time_mil;
 
 
     Rx_segment():inited_(false),data(nullptr),data_len(0){}
@@ -264,6 +284,7 @@ public:
             data=new uint8_t[len];
             data_len=len;
         }
+        rec_time_mil=get_current_millis();
         inited_=true;
     }
     void reset(){
@@ -275,7 +296,7 @@ public:
         if(data)delete[] data;
     }
 };
-
+/*
 struct Rx_frame: public Noncopyable{
 
     std::vector<Rx_segment> segments;
@@ -289,7 +310,7 @@ struct Rx_frame: public Noncopyable{
         }
     }
 };
-
+*/
 struct Tx_window: public Noncopyable{
     const static int WINDOW_SIZE_HIGH=10;
     const static int WINDOW_SIZE_LOW=10;
@@ -313,14 +334,15 @@ struct Rx_window: public Noncopyable{
 private:
     Rx_segment* segments_;
     int segments_count_;
-    int top_;
-    int tail_;
-    int newest_fid_;
+    int segments_per_frame_;
+    int top_; //is always 1 segment beyond the most recent delivery
+    int tail_; //is always the least recent delivery/not deliveried.
 public:
 
     Rx_window():top_(0),tail_(0){
         auto& config=Config::current();
-        segments_count_=config->barcode_config.vertical_block_count*config->barcode_config.horizontal_block_count*WINDOW_SIZE;
+        segments_per_frame_=config->barcode_config.vertical_block_count*config->barcode_config.horizontal_block_count;
+        segments_count_=segments_per_frame_*WINDOW_SIZE;
         segments_=new Rx_segment[segments_count_];
     }
     ~Rx_window(){
@@ -332,7 +354,11 @@ public:
         int tail = tail_, top = top_;
         if (tail > top)
             top += segments_count_;
-        while (tail < top) {
+
+        //one frame buffer
+        int till_idx=segments_per_frame_*(top/segments_per_frame_-1);
+
+        while (tail < till_idx) {
             if (!segments_[tail%segments_count_].inited()) {
                 out_skip++;
                 tail++;
@@ -340,17 +366,97 @@ public:
             else if (!segments_[tail%segments_count_].is_non_segment())
                 tail++;
             else {
-                if (segments_[tail%segments_count_].metadata.FID > newest_fid_ - 2);
-                tail++;
+                tail_=tail%segments_count_;
+                return &(segments_[tail%segments_count_]);
             }
         }
-
+        return nullptr;
     }
-    bool pop();
+    bool pop(Rx_segment* seg){
+        int idx=(int)(seg-segments_);
+        seg->reset();
+
+        tail_=(idx+1)%segments_count_;
+
+        return true;
+    }
 
     //for write
-    bool as_non_segment(int FID, int block_id, bool& replaced);
-    Rx_segment* as_segment(Block_meta meta, int block_id, uint8_t* data, int len, bool& replaced);
+    //if conflicted, return false
+    bool as_non_segment(int FID, int block_id, bool& overlapped){
+        int idx=FID*segments_per_frame_+block_id;
+
+        int tail=tail_,top=top_;
+
+
+        if(tail==top){
+            //currently empty
+            segments_[idx].init_as_non_segment();
+            top_=idx+1;
+            return true;
+        }
+        else {
+            if (tail > top)top += segments_count_;
+
+            int till_idx = segments_per_frame_ * (top / segments_per_frame_ - 1);
+
+            //determine new idx
+            int abs_idx;
+            if(tail_>top_) {
+                if (idx <= top_)abs_idx = idx + segments_count_;
+                else abs_idx = idx;
+            }
+            else abs_idx=idx;
+
+            if(till_idx<tail)till_idx=tail;
+
+            if(abs_idx<till_idx && abs_idx>=tail) {
+                overlapped = true;
+                segments_[idx].init_as_non_segment();
+                top_=(idx+1)%segments_count_;
+                return true;
+            }
+            else if(abs_idx>=till_idx && abs_idx<=top)
+
+            if (till_idx <= tail) {
+                //not possible to overlap
+                overlapped = false;
+            }
+            else {
+                int till_idx_mod=till_idx%segments_per_frame_;
+            }
+                if(tail_<top_) {
+                    if (idx <= top_ && idx >= tail_) {
+                        if (segments_[idx].is_non_segment())return true;
+                        else {
+                            segments_[idx].init_as_non_segment();
+                            return false;
+                        }
+                    }
+                    else{
+                        segments_[idx].init_as_non_segment();
+                        top_=(idx+1)%segments_count_;
+                        return true;
+                    }
+                }
+                else{
+                    if(idx<=top || idx>=tail){
+                        if(segments_[idx].is_non_segment())return true;
+                        else {
+                            segments_[idx].init_as_non_segment();
+                            return false;
+                        }
+                    }
+                    else{
+                        segments_[idx].init_as_non_segment();
+                        top_=(idx+1)%segments_count_;
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    //Rx_segment* as_segment(Block_meta meta, int block_id, uint8_t* data, int len, bool& replaced);
 
     bool push();
 };

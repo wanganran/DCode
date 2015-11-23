@@ -8,6 +8,7 @@
 //debug
 #include <functional>
 #include <type_traits>
+#include <chrono>
 #include <assert.h>
 
 #define DEBUG(...) printf(__VA_ARGS__)
@@ -90,6 +91,8 @@ private:
     };
     static constexpr int NORMAL_DIST_SIZE= sizeof(NORMAL_DIST)/sizeof(NORMAL_DIST[0]);
     static constexpr int NORMAL_DIST_CUL_SIZE=sizeof(NORMAL_DIST_CUL)/sizeof(NORMAL_DIST_CUL[0]);
+
+    static constexpr int abs(int x){return x<0?-x:x;}
 public:
     //normalized
     static constexpr double N(double mean, double theta, double x){
@@ -110,7 +113,6 @@ public:
 struct Point{
     int x,y;
     Point(int _x, int _y):x(_x),y(_y){}
-    Point(const PointF& p):x((int)(p.x)),y((int)(p.y)){}
     Point():x(0),y(0){}
     bool is_zero() const {return x==0 && y==0;}
 
@@ -548,5 +550,13 @@ public:
     Noncopyable(const Noncopyable&)=delete;
     Noncopyable& operator = (const Noncopyable&) =delete;
 };
+
+//time
+int64_t get_current_millis(){
+    std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
+    std::chrono::system_clock::now().time_since_epoch()
+    );
+    return ms.count();
+}
 
 #endif //DCODE_UTILS_H

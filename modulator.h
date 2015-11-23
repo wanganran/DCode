@@ -150,7 +150,7 @@ public:
 
     //need some extra info: last block is data? frame ID? is start/end of packet? current packet type?
     int modulate_data(const uint8_t* source_ptr, Tx_block& dest,
-                      const Block_meta& meta,
+                      const Block_meta& meta, const Ack& ack,
                       int max_size=-1);
 
     //Tx->Rx
@@ -198,7 +198,7 @@ public:
     Option<Block_content> get_block_content(Symbol_scanner::Block_anchor& src,Pixel_reader* reader, bool& out_parameter_parity);
     Option<Block_type> get_block_type(Block_content& src);
     bool demodulate_data(Block_content& src,
-                         uint8_t* data_dest, int& out_len, Block_meta& out_meta);
+                         uint8_t* data_dest, int& out_len, Ack& out_ack, Block_meta& out_meta);
     bool demodulate_probe(Block_content& src, Pixel_reader* reader,
                           Rx_PHY_probe_result& probe_dest);
     bool demodulate_action(Block_content& src,

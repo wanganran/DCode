@@ -120,11 +120,11 @@ static int _calc_msg_size(FEC_level level_pri, FEC_level level_sec, int total_sy
 }
 
 //Data packet Link layer format:
-//| 1 bit: last_is_data | 6 bits: FID |
-//| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) |
-//| 5 bits: reserved |
+//| 8 bits: FID |
+//| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) | 1 bit: last is data
+//| 4 bits: reserved |
 int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
-                             const Block_meta& meta,
+                             const Block_meta& meta, const Ack& ack,
                              int max_size) {
     auto& parameters=Tx_adaptive_parameters::current();
 
@@ -142,8 +142,10 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
 
 
     //first: encode header
-    buffer[0]=(uint8_t)((meta.last_is_data?128:0) | ((meta.FID&63)<<1) | (meta.start_of_packet?1:0));
-    buffer[1]=(uint8_t)((meta.end_of_packet?128:0) | (((int)meta.type)<<5));
+    Packet_type type=(meta.type==Packet_type::DATA?(ack.count!=0?Packet_type::ACK:Packet_type::DATA):meta.type);
+
+    buffer[0]=(uint8_t)(meta.FID);
+    buffer[1]=(uint8_t)((meta.end_of_packet?128:0) | (((int)type)<<5) | (meta.last_is_data?16:0));
 
     //second: calculate
     int k;
@@ -152,7 +154,22 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
 
     //third: encode
     unsigned int length=(unsigned)min(max_size, n-k-2);
-    memcpy(buffer+2, source_ptr, length);
+
+    //check ack
+    bool acked=ack.count==0;
+    int offset=0;
+    if(type==Packet_type::ACK){
+        offset++;
+        buffer[2]=(uint8_t)(ack.count);
+        for(int i=0;i<ack.count;i++){
+            match_Tp(ack.blocks_to_acked[i], [buffer,i, &offset](int fid, int bid, bool is_fully_damaged){
+                buffer[3+i*2]=(uint8_t)(fid&255);
+                buffer[4+i*2]=(uint8_t)bid;
+                offset+=2;
+            });
+        }
+    }
+    memcpy(buffer+2+offset, source_ptr, length-offset);
     coder->encode(buffer);
 
     //fourth: modulate
@@ -193,7 +210,7 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
             }
         }
     }
-    return length;
+    return length-offset;
 }
 
 static const uint8_t GRAY_CODE[8]={0,1,3,2,6,7,5,4};
@@ -303,10 +320,10 @@ Option<Block_type> Demodulator::get_block_type(Block_content &src) {
 }
 
 //Data packet Link layer format:
-//| 1 bit: last_is_data | 6 bits: FID |
-//| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) |
+//| 8 bits: FID |
+//| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) | 1 bit: last is data
 //| 5 bits: reserved |
-bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &out_len,
+bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &out_len, Ack& out_ack,
                                   Block_meta& out_meta) {
     uint8_t buffer_sec[576];
     uint8_t buffer_data[256];
@@ -364,13 +381,28 @@ bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &o
     assert(n == n_should);
     auto &decoder = coder_buffered_.get_coder(n, k);
     if (decoder->decode(buffer_data)) {
-        out_len = n - k;
-        memcpy(data_dest, buffer_data + 2, n - k - 2);
-        out_meta.last_is_data = (buffer_data[0] >> 7);
-        out_meta.FID = ((buffer_data[0] >> 1) & 63);
+        out_meta.FID = buffer_data[0];
         out_meta.start_of_packet = (buffer_data[0] & 1) == 1;
         out_meta.end_of_packet = (buffer_data[1] >> 7) == 1;
         out_meta.type = (Packet_type) ((buffer_data[1] >> 5) & 3);
+        out_meta.last_is_data = ((buffer_data[1] >> 4) & 1) == 1;
+
+        int offset=0;
+        if(out_meta.type==Packet_type::ACK){
+            offset++;
+            out_ack.count=buffer_data[2];
+            for(int i=0;i<out_ack.count;i++){
+                match_Tp(out_ack.blocks_to_acked[i], [buffer_data,i, &offset](int& bid, int& fid, bool& is_fully_damaged){
+                    bid=buffer_data[3+i*2];
+                    fid=buffer_data[4+i*2];
+                    offset+=2;
+                });
+            }
+        }
+        out_len = n - k - 2 - offset;
+
+
+        memcpy(data_dest, buffer_data + 2 + offset, (size_t)(n - k - 2 - offset));
         return true;
     }
     else return false;
@@ -447,6 +479,7 @@ bool Demodulator::demodulate_probe(Block_content &src, Pixel_reader* reader, Rx_
                         squat3 = (smax * 3 + smin) / 4;
                         for (int t = 0; t < 8; t++)
                             if (samples[t].R < squat3 && samples[t].R >= squat1)scount++;
+                        break;
                     case 2: //G
                         for (int t = 0; t < 8; t++) {
                             smax = max(smax, (int)(samples[t].G));
@@ -456,6 +489,7 @@ bool Demodulator::demodulate_probe(Block_content &src, Pixel_reader* reader, Rx_
                         squat3 = (smax * 3 + smin) / 4;
                         for (int t = 0; t < 8; t++)
                             if (samples[t].G < squat3 && samples[t].G >= squat1)scount++;
+                        break;
                     case 1: //B
                         for (int t = 0; t < 8; t++) {
                             smax = max(smax, (int)(samples[t].B));
