@@ -5,6 +5,7 @@
 #ifndef DCODE_RX_BUFFER_H
 #define DCODE_RX_BUFFER_H
 #include <cstdint>
+#include <set>
 #include "structures.h"
 #include "segment_pool.h"
 
@@ -12,68 +13,102 @@ class Rx_buffer{
 private:
 
     static const int BUFFER_SIZE=256;
-    static const int MAX_FPS=30;
+    static const int R=3; //repeat NACK
+    static const int NR=30; //maximum frames per RTT
+    static const int K=5; //if this frame is K frames later than last sent NACK, or current negative blocks are exceeding block size, and there exist nagative blocks since last sent NACK, then send a new NACK.
+    static const int D=2; //regard the most recent D received frames as non-complete frames
 
-    static const int TIMEOUT=BUFFER_SIZE*500/MAX_FPS;
-    struct Node{
-        Node* pre;
-        bool delivered;
-        int64_t retransmission;
-        int block_ref_idx;
+    struct NACK_buffer{
+        std::vector<std::pair<int,int>> negative_blocks;
+        int until_buffer_idx;
 
-        Node():pre(nullptr),delivered(false),retransmission(-1){
-
-        }
-
-        ~Node(){
-            if(pre)
-                delete pre;
-        }
+        NACK_buffer():until_buffer_idx(0){}
     };
-    Node* FID_to_node_[BUFFER_SIZE];
+
+    NACK_buffer NACK_buffer_[R];
+    int NACK_buffer_peak_;
 
     struct Block_ref{
-        bool is_start_of_frame;
-        bool is_end_of_frame;
-        bool is_vacancy; //if vacancy, segment and node_ref must be nullptr
+        bool is_start_of_packet(){if(!segment) return false; return segment->metadata.start_of_packet;}
+        bool is_end_of_packet(){if(!segment)return false; return segment->metadata.end_of_packet;}
+        bool is_vacancy(){return segment==nullptr && !is_functional_;} //if vacancy, segment and node_ref must be nullptr
+        bool is_functional_block(){return is_functional_;}
 
-        Node* node_ref;
+        bool init_as_functional(){is_functional_=true;}
+        bool init_as_segment(Rx_segment* segment_){segment=segment_;}
 
         Rx_segment* segment;
 
-        Block_ref():is_start_of_frame(false),is_end_of_frame(false),is_vacancy(true),node_ref(nullptr),segment(nullptr){}
+        Block_ref():segment(nullptr), is_functional_(false){}
+    private:
+        bool is_functional_;
     };
+
+    //flag list
+    std::set<int> flags_;
+
+    //must ensure that flag_idx is before head_idx_
+    void _insert_flag(int flag_idx){
+        flags_.insert(flag_idx);
+    }
+
+    //[idx_begin, idx_end)
+    void _remove_flag_range(int idx_begin, int idx_end){
+        auto it=flags_.lower_bound(idx_begin);
+        if(it==flags_.end())return;
+        while(*it<idx_end){
+            auto it_=it;
+            it++;
+            flags_.erase(it_);
+        }
+    }
+
+    //find maximal x s.t. x<=idx, circularly
+    Option<int> _query_flag_before(int idx){
+        if(flags_.size()==0)return None<int>();
+        else if(flags_.size()==1)return Some(*(flags_.begin()));
+
+        auto it=flags_.upper_bound(idx);
+        if(it==flags_.begin())
+            return Some(*(std::prev(flags_.end())));
+        else return Some(*(std::prev(it)));
+    }
+
+    //find minimal x s.t. x>=idx, circularly
+    Option<int> _query_flag_after(int idx){
+        if(flags_.size()==0)return None<int>();
+        else if(flags_.size()==1)return Some(*(flags_.begin()));
+
+        auto it=flags_.lower_bound(idx);
+        if(it==flags_.end())return Some(*(flags_.begin()));
+        else return Some(*it);
+    }
 
     int buffer_size_;
     int size_per_frame_;
     Block_ref* buffer_;
 
-    void submit_packet_and_clear_timeout(int current_idx, Packet* dest, int& out_pkt_number, Ack& out_ack){
-        int current_fid=current_idx/size_per_frame_;
-        auto ref=buffer_[current_idx];
-    }
+    int head_idx_;
 
 
-    Block_ref& _get_block_ref(int id){
-        Block_ref ref=buffer_[id];
-        auto current_time=get_current_millis();
-        if(ref.is_vacancy)return ref;
-        if(ref.segment->rec_time_mil<current_time-TIMEOUT){ //timeout
-            if(ref.node_ref) {
-            }
-        }
-    }
     bool _init_buffer(){
         auto config=Config::current();
 
         size_per_frame_=config->barcode_config.horizontal_block_count*config->barcode_config.vertical_block_count;
         buffer_size_=size_per_frame_*BUFFER_SIZE;
         buffer_=new Block_ref[buffer_size_];
+
+        head_idx_=-1;
     }
 
     bool _insert(Rx_segment* seg){
         int id=seg->metadata.FID*size_per_frame_+seg->block_id;
-        //if(buffer_[id].is_vacancy)
+        if(!buffer_[id].is_vacancy()){//replace it
+            Segment_pool::shared().free(buffer_[id].segment);
+        }
+
+        buffer_[id].segment = seg;
+        if (buffer_[id].is_end_of_packet() || buffer_[id].is_start_of_packet());
     }
 public:
 
