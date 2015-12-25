@@ -275,10 +275,7 @@ public:
 
     Rx_segment():inited_(false),data(nullptr),data_len(0){}
 
-    void init_as_non_segment(){
-        init_as_segment(0);
-    }
-    void init_as_segment(int len){
+    void init(int len){
         if(data_len!=len){
             if(data)delete[] data;
             data=new uint8_t[len];
@@ -291,7 +288,6 @@ public:
         inited_=false;
     }
     bool inited(){return inited_;}
-    bool is_non_segment(){return inited() && data_len==0;}
     ~Segment(){
         if(data)delete[] data;
     }
