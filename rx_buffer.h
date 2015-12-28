@@ -140,27 +140,50 @@ private:
                 func(i);
     }
 
-    bool _check_complete_packet(int id, int& out_left_flag, int& out_right_flag){
+    bool _check_packet(int id, int& out_left_flag, int& out_right_flag, int& out_vacancy_num){
         auto right_flag=_query_flag_after(id);
         auto left_flag=_query_flag_before(id);
 
         //if they are valid?
 
+        //inside a detected packet
         if(right_flag.empty() || left_flag.empty() || _cross(left_flag.get_reference(),right_flag.get_reference(),head_idx_))return false;
+        //the detected packet's length is valid
         if(_distance(left_flag.get_reference(),right_flag.get_reference())>MAX_BLOCK_PER_PACKET)return false;
-        if(!buffer_[left_flag.get_reference()].is_start_of_packet() || !buffer_[right_flag.get_reference()].is_end_of_packet())return false;
+        //the detected packet has a begining and ending
+
+        //assert the flag is valid
+
+        out_left_flag=left_flag.get_reference();
+        out_right_flag=right_flag.get_reference();
+        assert(buffer_[out_left_flag].segment!= nullptr && buffer_[out_right_flag].segment!= nullptr);
+        if(!buffer_[out_left_flag].is_start_of_packet()){
+            //then it is the end of the packet. its following block is the beginning
+            out_left_flag++;
+        }
+
+        if(!buffer_[out_right_flag].is_end_of_packet()) {
+            //then it is the start of the packet. if its previous block is a data block, then it is the end block. otherwise the one before its previous is the end block.
+            if (buffer_[out_right_flag].segment->metadata.last_is_data)
+                out_right_flag--;
+            else out_right_flag -= 2;
+        }
+
+        //check again the validity
+        if(_cross(out_left_flag,out_right_flag,head_idx_))return false;
 
         //traverse
+        out_vacancy_num=0;
 
-        int vacancy_blocks=0;
-
-        _foreach(left_flag.get_reference(),right_flag.get_reference(),[&](int i){
-            if(buffer_[i].is_vacancy())vacancy_blocks++;
+        _foreach(out_left_flag,out_right_flag,[&](int i){
+            if(buffer_[i].is_vacancy())out_vacancy_num++;
         });
 
-        return vacancy_blocks==0;
+        return true;
 
     }
+
+
 
     bool _insert(Rx_segment* seg){
         int id=seg->metadata.FID*size_per_frame_+seg->block_id;
@@ -195,7 +218,9 @@ private:
         }
     }
 public:
+    int receive(Rx_segment* segment, Packet* out_packets_arr){
 
+    }
 };
 
 #endif //DCODE_RX_BUFFER_H
