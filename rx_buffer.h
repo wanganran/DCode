@@ -140,6 +140,9 @@ private:
                 func(i);
     }
 
+    //check which packet a block belongs to. returns whether the packet exists.
+    //out_left/right_flag is the beginning and ending of the packet or the speculated packet.
+    //out_vacancy_num is the detected vacancy blocks (include functional blocks) within the packet.
     bool _check_packet(int id, int& out_left_flag, int& out_right_flag, int& out_vacancy_num){
         auto right_flag=_query_flag_after(id);
         auto left_flag=_query_flag_before(id);
@@ -219,7 +222,14 @@ private:
     }
 public:
     int receive(Rx_segment* segment, Packet* out_packets_arr){
+        //prerequisite: segment is a newly arrived one.
 
+        //deferred: update NACK
+        //first, insert the segment
+        //second, check it it complete a packet, or it is an independent retransmission block
+        //third, if so, check if it is a retransmission packet
+        // if so, complete its corresponded block by recursion
+        //otherwise, fill out_packets_arr and return.
     }
 };
 
