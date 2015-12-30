@@ -19,15 +19,25 @@ private:
     static const int D=2; //regard the most recent D received frames as non-complete frames
     static const int MAX_BLOCK_PER_PACKET=64;
 
-    struct NACK_buffer{
-        std::vector<std::pair<int,int>> negative_blocks;
-        int until_buffer_idx;
 
-        NACK_buffer():until_buffer_idx(0){}
+    ///begin NACK buffer
+
+    struct NACK_buffer{
+        //stores the block idx of vacancy blocks
+        std::vector<int> negative_blocks;
+        int start_from_buffer_idx;
+        int top_buffer_idx;
+
+        NACK_buffer():start_from_buffer_idx(0), top_buffer_idx(0){}
     };
 
     NACK_buffer NACK_buffer_[R];
     int NACK_buffer_peak_;
+    int NACK_buffer_tail_;
+
+    ///end NACK buffer
+
+    //begin Block_ref
 
     struct Block_ref{
         bool is_start_of_packet(){if(!segment) return false; return segment->metadata.start_of_packet;}
@@ -57,6 +67,10 @@ private:
     private:
         bool is_functional_;
     };
+
+    ///end Block_ref
+
+    ///begin buffer flags
 
     //flag list
     std::set<int> flags_;
@@ -103,12 +117,19 @@ private:
         else return Some(*it);
     }
 
+    ///end buffer flags
+
+    ///begin buffer properties
+
     int buffer_size_;
     int size_per_frame_;
     Block_ref* buffer_;
 
     int head_idx_;
 
+    ///end buffer properties
+
+    ///begin buffer manipulations
 
     bool _init_buffer(){
         auto config=Config::current();
@@ -187,21 +208,31 @@ private:
     }
 
 
-
+    //return if the segment is already received.
+    //seg is allocated by the caller. After call, it doesn't need to be freed by the caller
     bool _insert(Rx_segment* seg){
         int id=seg->metadata.FID*size_per_frame_+seg->block_id;
-        if(!buffer_[id].is_vacancy()){//replace it
+
+        bool overrided=false;
+        if(!buffer_[id].is_vacancy()){//replace it, no matter whether the original one is expired
             Segment_pool::shared().free(buffer_[id].segment);
+            buffer_[id].init_as_segment(seg);
+            overrided=true;
         }
-        //insert
-        buffer_[id].init_as_segment(seg);
+        else {
+            //insert
+            buffer_[id].init_as_segment(seg);
+        }
         if(!seg->metadata.last_is_data){
             //mark functional packet
             buffer_[(id-1+buffer_size_)%buffer_size_].init_as_functional();
         }
         //modify the header pos
         int old_head_idx=head_idx_;
-        if(head_idx_==-1)head_idx_=id;
+        if(head_idx_==-1){ //this is the first received block
+            head_idx_=id;
+            _init_NACK(id);
+        }
         else if(head_idx_>id && id+buffer_size_-head_idx_<D*size_per_frame_){
                 //shift id in another circle
                 head_idx_=id;
@@ -212,19 +243,58 @@ private:
 
         //update flags
         if(head_idx_!=old_head_idx){
+            //shifted
             _remove_flag_range(old_head_idx,head_idx_);
         }
+        else if(overrided)//override a received block, return false directly
+            return false;
 
         if (buffer_[id].is_end_of_packet() || buffer_[id].is_start_of_packet()){
             //insert flag
             _insert_flag(id);
         }
+        return true;
     }
+
+    void _clear_NACK(int NACK_idx, int last_top_buffer_idx){
+        NACK_buffer_[NACK_idx].negative_blocks.clear();
+        NACK_buffer_[NACK_idx].start_from_buffer_idx=(last_top_buffer_idx+1)% buffer_size_;
+        NACK_buffer_[NACK_idx].top_buffer_idx=last_top_buffer_idx;
+    }
+
+    void _init_NACK(int updated_id){
+        assert(NACK_buffer_peak_==0);
+        NACK_buffer_tail_=NACK_buffer_peak_;
+        Block_ref& block=buffer_[updated_id];
+        assert(!block.is_vacancy());
+        _clear_NACK(NACK_buffer_peak_, block.segment->get_full_id(size_per_frame_));
+    }
+    bool _update_NACK(int updated_id) {
+        //only care D frames before updated_id
+        int till_block_id = ((updated_id / size_per_frame_ - D + BUFFER_SIZE) * size_per_frame_ + size_per_frame_ - 1) %
+                            buffer_size_;
+        NACK_buffer &nack_buffer = NACK_buffer_[NACK_buffer_peak_];
+        if (!_cross((nack_buffer.top_buffer_idx + 1) % buffer_size_, till_block_id, head_idx_))
+            _foreach((nack_buffer.top_buffer_idx + 1) % buffer_size_, till_block_id, [&](int id) {
+                if (buffer_[id].is_vacancy()) {
+                    nack_buffer.negative_blocks.push_back(id);
+                    if (!_cross(nack_buffer.start_from_buffer_idx, nack_buffer.top_buffer_idx, id))
+                        nack_buffer.top_buffer_idx = id;
+                }
+            });
+    }
+
+    ///end buffer manipulations
 public:
     int receive(Rx_segment* segment, Packet* out_packets_arr){
         //prerequisite: segment is a newly arrived one.
+        if(!_insert(segment))return 0;
 
         //deferred: update NACK
+        auto _deferred=defer([&](){
+            _update_NACK(segment->get_full_id(size_per_frame_));
+        });
+
         //first, insert the segment
         //second, check it it complete a packet, or it is an independent retransmission block
         //third, if so, check if it is a retransmission packet

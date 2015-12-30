@@ -291,6 +291,10 @@ public:
     ~Segment(){
         if(data)delete[] data;
     }
+
+    int get_full_id(int block_per_frame) const {
+        return metadata.FID * block_per_frame + block_id;
+    }
 };
 /*
 struct Rx_frame: public Noncopyable{
