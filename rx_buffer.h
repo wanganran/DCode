@@ -25,7 +25,9 @@ private:
     struct NACK_buffer{
         //stores the block idx of vacancy blocks
         std::vector<int> negative_blocks;
+        //minimum block idx
         int start_from_buffer_idx;
+        //maximum block idx
         int top_buffer_idx;
 
         NACK_buffer():start_from_buffer_idx(0), top_buffer_idx(0){}
@@ -34,6 +36,47 @@ private:
     NACK_buffer NACK_buffer_[R];
     int NACK_buffer_peak_;
     int NACK_buffer_tail_;
+
+    //init a new NACK.
+    void _shift_NACK_buffer(){
+        int old_peak=NACK_buffer_peak_;
+        NACK_buffer_peak_=(NACK_buffer_peak_+1)%R;
+        if(NACK_buffer_tail_==NACK_buffer_peak_)NACK_buffer_tail_=(NACK_buffer_tail_+1)%R;
+        _clear_NACK(NACK_buffer_peak_,NACK_buffer_[old_peak].top_buffer_idx);
+    }
+
+    //clear a certain NACK
+    void _clear_NACK(int NACK_idx, int last_top_buffer_idx){
+        NACK_buffer_[NACK_idx].negative_blocks.clear();
+        NACK_buffer_[NACK_idx].start_from_buffer_idx=_next(last_top_buffer_idx);
+        NACK_buffer_[NACK_idx].top_buffer_idx=last_top_buffer_idx;
+    }
+
+    //init the pointers and clear the first NACK.
+    void _init_NACK(int updated_id){
+        assert(NACK_buffer_peak_==0);
+        NACK_buffer_tail_=NACK_buffer_peak_; //length=0
+        Block_ref& block=buffer_[updated_id];
+        assert(!block.is_vacancy());
+        _clear_NACK(NACK_buffer_peak_, block.segment->get_full_id(size_per_frame_));
+    }
+
+    //insert a new NACK entry to current peak NACK
+    bool _update_NACK(int updated_id) {
+        //only care D frames before updated_id
+        int till_block_id = ((updated_id / size_per_frame_ - D + BUFFER_SIZE) * size_per_frame_ + size_per_frame_ - 1) %
+                            buffer_size_;
+        NACK_buffer &nack_buffer = NACK_buffer_[NACK_buffer_peak_];
+        auto from_block_id=_next(nack_buffer.top_buffer_idx);
+        if (!_cross(from_block_id, till_block_id, head_idx_))
+            _foreach(from_block_id, till_block_id, [&](int id) {
+                if (buffer_[id].is_vacancy()) {
+                    nack_buffer.negative_blocks.push_back(id);
+                    if (!_cross(nack_buffer.start_from_buffer_idx, nack_buffer.top_buffer_idx, id))
+                        nack_buffer.top_buffer_idx = id;
+                }
+            });
+    }
 
     ///end NACK buffer
 
@@ -55,10 +98,12 @@ private:
         bool init_as_segment(Rx_segment* segment_){
             if(segment)Segment_pool::shared().free(segment);
             segment=segment_;
+            is_functional_=false;
         }
         bool reset(){
             if(segment)Segment_pool::shared().free(segment);
             segment= nullptr;
+            is_functional_=false;
         }
 
         Rx_segment* segment;
@@ -91,7 +136,7 @@ private:
             }
         }
         else {
-            _remove_flag_range(idx_begin, *std::prev(flags_.end()) + 1);
+            _remove_flag_range(idx_begin, *std::prev(flags_.end()));
             _remove_flag_range(0, idx_end);
         }
     }
@@ -117,6 +162,9 @@ private:
         else return Some(*it);
     }
 
+    //find x if x==idx
+    Option<int> _query_flag(int idx){return flags_.find(idx)==flags_.end()?Some(idx):None<int>();}
+
     ///end buffer flags
 
     ///begin buffer properties
@@ -138,6 +186,7 @@ private:
         buffer_size_=size_per_frame_*BUFFER_SIZE;
         buffer_=new Block_ref[buffer_size_];
 
+        //-1 indicates the buffer is empty.
         head_idx_=-1;
     }
 
@@ -154,11 +203,24 @@ private:
         return left<=right?right-left:right+buffer_size_-left;
     }
 
+    //previous and next one position within the buffer
+    int _prev(int x){
+        return (x+buffer_size_-1)%R;
+    }
+    int _next(int x){
+        return (x+1)%R;
+    }
+
+    //begin, end are indexes within [0,buffer_size_].
     template<typename F>
     void _foreach(int begin, int end, F func){
         if(begin<=end)
             for(int i=begin;i<=end;i++)
                 func(i);
+        else{
+            _foreach(begin,buffer_size_,func);
+            _foreach(0,end,func);
+        }
     }
 
     //check which packet a block belongs to. returns whether the packet exists.
@@ -225,7 +287,7 @@ private:
         }
         if(!seg->metadata.last_is_data){
             //mark functional packet
-            buffer_[(id-1+buffer_size_)%buffer_size_].init_as_functional();
+            buffer_[_prev(id)].init_as_functional();
         }
         //modify the header pos
         int old_head_idx=head_idx_;
@@ -256,33 +318,6 @@ private:
         return true;
     }
 
-    void _clear_NACK(int NACK_idx, int last_top_buffer_idx){
-        NACK_buffer_[NACK_idx].negative_blocks.clear();
-        NACK_buffer_[NACK_idx].start_from_buffer_idx=(last_top_buffer_idx+1)% buffer_size_;
-        NACK_buffer_[NACK_idx].top_buffer_idx=last_top_buffer_idx;
-    }
-
-    void _init_NACK(int updated_id){
-        assert(NACK_buffer_peak_==0);
-        NACK_buffer_tail_=NACK_buffer_peak_;
-        Block_ref& block=buffer_[updated_id];
-        assert(!block.is_vacancy());
-        _clear_NACK(NACK_buffer_peak_, block.segment->get_full_id(size_per_frame_));
-    }
-    bool _update_NACK(int updated_id) {
-        //only care D frames before updated_id
-        int till_block_id = ((updated_id / size_per_frame_ - D + BUFFER_SIZE) * size_per_frame_ + size_per_frame_ - 1) %
-                            buffer_size_;
-        NACK_buffer &nack_buffer = NACK_buffer_[NACK_buffer_peak_];
-        if (!_cross((nack_buffer.top_buffer_idx + 1) % buffer_size_, till_block_id, head_idx_))
-            _foreach((nack_buffer.top_buffer_idx + 1) % buffer_size_, till_block_id, [&](int id) {
-                if (buffer_[id].is_vacancy()) {
-                    nack_buffer.negative_blocks.push_back(id);
-                    if (!_cross(nack_buffer.start_from_buffer_idx, nack_buffer.top_buffer_idx, id))
-                        nack_buffer.top_buffer_idx = id;
-                }
-            });
-    }
 
     ///end buffer manipulations
 public:
@@ -296,7 +331,7 @@ public:
         });
 
         //first, insert the segment
-        //second, check it it complete a packet, or it is an independent retransmission block
+        //second, check it complete a packet, or it is an independent retransmission block
         //third, if so, check if it is a retransmission packet
         // if so, complete its corresponded block by recursion
         //otherwise, fill out_packets_arr and return.
