@@ -323,7 +323,7 @@ Option<Block_type> Demodulator::get_block_type(Block_content &src) {
 //| 8 bits: FID |
 //| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) | 1 bit: last is data
 //| 5 bits: reserved |
-bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &out_len, Ack& out_ack,
+bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &out_len,
                                   Block_meta& out_meta) {
     uint8_t buffer_sec[576];
     uint8_t buffer_data[256];
@@ -387,22 +387,10 @@ bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &o
         out_meta.type = (Packet_type) ((buffer_data[1] >> 5) & 3);
         out_meta.last_is_data = ((buffer_data[1] >> 4) & 1) == 1;
 
-        int offset=0;
-        if(out_meta.type==Packet_type::ACK){
-            offset++;
-            out_ack.count=buffer_data[2];
-            for(int i=0;i<out_ack.count;i++){
-                match_Tp(out_ack.blocks_to_acked[i], [buffer_data,i, &offset](int& bid, int& fid, bool& is_fully_damaged){
-                    bid=buffer_data[3+i*2];
-                    fid=buffer_data[4+i*2];
-                    offset+=2;
-                });
-            }
-        }
-        out_len = n - k - 2 - offset;
+        out_len = n - k - 2;
 
 
-        memcpy(data_dest, buffer_data + 2 + offset, (size_t)(n - k - 2 - offset));
+        memcpy(data_dest, buffer_data + 2, (size_t)(n - k - 2));
         return true;
     }
     else return false;

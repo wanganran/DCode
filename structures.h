@@ -51,12 +51,18 @@ public:
     Packet_type type;
     uint8_t* data;
     int length;
-    Packet(Packet_type pkttype, const uint8_t* pktdata, int len):type(pkttype),data(new uint8_t[len]),length(len){
-        memcpy(data,pktdata,len);
+    Packet():length(-1),data(nullptr),type(Packet_type::DATA){}
+    bool inited(){return length>=0;};
+    void init(Packet_type pkttype, int len){
+        type=pkttype;
+        if(data)delete[] data;
+        data=new uint8_t[len];
+        length=len;
     }
 
     ~Packet() {
-        delete[] data;
+        if(data)
+            delete[] data;
     }
 };
 
@@ -261,6 +267,14 @@ struct Rx_PHY_probe_result{
 struct Rx_PHY_action_result: public Tx_PHY_action{
 };
 
+/*
+struct Rx_retransmission : public Noncopyable {
+private:
+    int id;
+
+}
+*/
+
 struct Rx_segment : public Noncopyable{
 private:
 
@@ -270,7 +284,6 @@ public:
     int block_id;
     uint8_t* data;
     int data_len;
-    int64_t rec_time_mil;
 
 
     Rx_segment():inited_(false),data(nullptr),data_len(0){}
@@ -281,7 +294,6 @@ public:
             data=new uint8_t[len];
             data_len=len;
         }
-        rec_time_mil=get_current_millis();
         inited_=true;
     }
     void reset(){
@@ -329,6 +341,7 @@ public:
 
     Packet* pull_packet();
 };
+/*
 struct Rx_window: public Noncopyable{
     const static int WINDOW_SIZE=64;
 private:
@@ -460,5 +473,5 @@ public:
 
     bool push();
 };
-
+*/
 #endif //DCODE_STRUCTURES_H
