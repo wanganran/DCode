@@ -30,6 +30,7 @@ enum class FEC_level{
     LOW=2
 };
 
+//this is inside a packet, which indicates it consists of data block
 enum class Packet_type{
     DATA,
     ACK,
@@ -99,31 +100,31 @@ public:
         set(1,2,COLOR_BLACK);
         set(2,1,COLOR_BLACK);
 
-        set(sidelength-1,sidelength-1,COLOR_WHITE);
-        set(sidelength-1,sidelength-2,COLOR_BLACK);
-        set(sidelength-2,sidelength-1,COLOR_BLACK);
+        set((unsigned int)(sidelength-1),(unsigned int)(sidelength-1),COLOR_WHITE);
+        set((unsigned int)(sidelength-1),(unsigned int)(sidelength-2),COLOR_BLACK);
+        set((unsigned int)(sidelength-2),(unsigned int)(sidelength-1),COLOR_BLACK);
 
-        set(0,sidelength-1,COLOR_WHITE);
-        set(1,sidelength-1,COLOR_WHITE);
-        set(0,sidelength-2,COLOR_BLACK);
-        set(1,sidelength-2,COLOR_BLACK);
-        set(2,sidelength-1,COLOR_BLACK);
+        set(0,(unsigned int)(sidelength-1),COLOR_WHITE);
+        set(1,(unsigned int)(sidelength-1),COLOR_WHITE);
+        set(0,(unsigned int)(sidelength-2),COLOR_BLACK);
+        set(1,(unsigned int)(sidelength-2),COLOR_BLACK);
+        set(2,(unsigned int)(sidelength-1),COLOR_BLACK);
 
-        set(sidelength-1,0,COLOR_WHITE);
-        set(sidelength-2,0,COLOR_BLACK);
-        set(sidelength-1,1,COLOR_WHITE);
-        set(sidelength-1,2,COLOR_BLACK);
-        set(sidelength-2,1,COLOR_BLACK);
+        set((unsigned int)(sidelength-1),0,COLOR_WHITE);
+        set((unsigned int)(sidelength-2),0,COLOR_BLACK);
+        set((unsigned int)(sidelength-1),1,COLOR_WHITE);
+        set((unsigned int)(sidelength-1),2,COLOR_BLACK);
+        set((unsigned int)(sidelength-2),1,COLOR_BLACK);
 
         set(3,0,RGB(syn));
-        set(sidelength-3,sidelength-1,RGB(syn));
+        set((unsigned int)(sidelength-3),(unsigned int)(sidelength-1),RGB(syn));
 
         set(4,0,PAR2(((uint8_t)type)<<1));
-        set(sidelength-4,sidelength-1,PAR2(((uint8_t)type)<<1));
+        set((unsigned int)(sidelength-4),(unsigned int)(sidelength-1),PAR2(((uint8_t)type)<<1));
 
-        int mid=sidelength/2;
-        set(0,mid,RGB(para_parity?2:5));
-        set(mid,0,RGB(para_parity?2:5));
+        unsigned int mid=(unsigned int)(sidelength/2);
+        set(0,mid,RGB((uint8_t)(para_parity?2:5)));
+        set(mid,0,RGB((uint8_t)(para_parity?2:5)));
 
         inited_=true;
     }

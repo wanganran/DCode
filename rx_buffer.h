@@ -327,8 +327,9 @@ private:
     //| ret_count: 1 byte | ret_1_content_length: 1 byte | ret_1_fid: 1 byte |
     //| ret_1_bid: 1 byte | last_is_data: 1 bit | start_of_packet: 1 bit | end_of_packet: 1 bit | padding |
     //| content: n bytes |...
-    int _fill_retransmission_packet(Packet* ret_packet, Packet* out_packets_ptr){
+    int _fill_retransmission_packet(Packet* ret_packet, int first_block_id, Packet* out_packets_ptr){
         assert(ret_packet->type==Packet_type::COMBINED_RETRANSMISSION);
+
         //parse the packet
         int ret_count=ret_packet->data[0];
         int t=1;
@@ -348,14 +349,17 @@ private:
             memcpy(seg->data,ptr+4,ptr[0]);
             t+=ptr[0]+4;
 
-            out_count+=receive(seg,out_packets_ptr);
+            if(!_cross(seg->get_full_id(size_per_frame_), _prev(first_block_id),head_idx_))
+                out_count+=receive(seg,out_packets_ptr);
+            else
+                Segment_pool::shared().free(seg);
         }
         return out_count;
     }
 
     //this won't shift the head
     //ret doesn't need to be freed after this call.
-    bool _fill_retransmission(Rx_segment* ret){
+    bool _insert_retransmission(Rx_segment* ret){
         int id=ret->get_full_id(size_per_frame_);
         assert(!buffer_[id].is_functional_block());
         bool replace=!buffer_[id].is_vacancy();
@@ -451,7 +455,7 @@ public:
         //first, insert the segment
         //prerequisite: segment is a newly arrived one.
         if(is_retrans_block)
-            if(!_fill_retransmission(segment))return 0;
+            if(!_insert_retransmission(segment))return 0;
         else
             if(!_insert(segment))return 0;
 

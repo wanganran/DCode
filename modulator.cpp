@@ -252,9 +252,9 @@ void Modulator::modulate_action(const Tx_PHY_action &action, Tx_block &dest) {
     dest.init(parameters.block_sidelength, Block_type::PROBE, 0, parameters.parity);
 
     uint8_t buffer[16];
-    buffer[0]=action.next_sidelength;
-    buffer[1]=(action.next_expected_parity?128:0) | (action.color_sec_mask << 4) | (((uint8_t)(action.FEC_level_pri))<<2) | ((uint8_t)(action.FEC_level_sec));
-    buffer[2]=action.self_FPS;
+    buffer[0]=(uint8_t)action.next_sidelength;
+    buffer[1]=(uint8_t)((action.next_expected_parity?128:0) | (action.color_sec_mask << 4) | (((uint8_t)(action.FEC_level_pri))<<2) | ((uint8_t)(action.FEC_level_sec)));
+    buffer[2]=(uint8_t)action.self_FPS;
 
     low_rate_rs_code.encode(buffer);
 
