@@ -471,29 +471,38 @@ public:
                 int length=0;
                 Packet_type type=buffer_[left_flag].segment->metadata.type;
                 _foreach(left_flag,right_flag,[&](int i){
-                    if(buffer_[i].segment)
-                        length+=buffer_[i].segment->data_len;
-                    if(i!=left_flag)
-                        assert(buffer_[i].segment->metadata.type==type);
+                    if(buffer_[i].segment) {
+                        length += buffer_[i].segment->data_len;
+                        if (i != left_flag)
+                            assert(buffer_[i].segment->metadata.type == type);
+                    }
                 });
 
                 out_packets_arr->init(type,length);
 
                 int offset=0;
                 _foreach(left_flag,right_flag,[&](int i){
-                    memcpy(out_packets_arr->data+offset, buffer_[i].segment->data,buffer_[i].segment->data_len);
-                    offset+=buffer_[i].segment->data_len;
+                    if(buffer_[i].segment) {
+                        memcpy(out_packets_arr->data + offset, buffer_[i].segment->data, buffer_[i].segment->data_len);
+                        offset += buffer_[i].segment->data_len;
+                    }
                 });
 
                 //check if the formed packet is a retransmission
                 if(type==Packet_type::COMBINED_RETRANSMISSION){
-                    return _fill_retransmission_packet(out_packets_arr, out_packets_arr);
+                    return _fill_retransmission_packet(out_packets_arr, left_flag, out_packets_arr);
                 }
                 else return 1;
             }
         }
         else
             return 0;
+    }
+
+    //receive a function (buffer, size, peak, tail)->bool). Shift NACK buffer if returning true
+    void manipulate_and_shift_NACK(std::function<bool(NACK_buffer*, int, int, int)> func){
+        if(func(NACK_buffer_, R, NACK_buffer_peak_, NACK_buffer_tail_))
+            _shift_NACK_buffer();
     }
 };
 

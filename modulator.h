@@ -163,16 +163,16 @@ public:
 
 class Demodulator: public Noncopyable {
 private:
-    Block_content _get_block_content(Pixel_reader* reader, int sidelength, Symbol_scanner::Block_anchor& anchor, bool parity);
+    Rx_block _get_block_content(Pixel_reader* reader, int sidelength, Symbol_scanner::Block_anchor& anchor, bool parity);
     Reed_solomon_code_buffered coder_buffered_;
     class Block_content_helper{
     private:
         int pos_;
         int escape_pos_;
-        Block_content* content_;
+        Rx_block * content_;
         int escape_buffer[27];
     public:
-        Block_content_helper(Block_content& content);
+        Block_content_helper(Rx_block & content);
         int get_total_symbol_count();
         bool pull_symbol(RGB& out_color);
         bool pull_symbol_smoothed(RGB& out_color);
@@ -181,29 +181,15 @@ private:
 
 public:
 
-    class Block_content{
-    public:
-        bool parameter_parity;
-        Lazy_mat<RGB> centered_;
-        Lazy_mat<RGB> smoothed_;
-        std::function<Point(int,int)> locator_;
-        int sidelength;
-        RGB get_center_color(int x_id, int y_id){return centered_[x_id][y_id];}
-        RGB get_smoothed_color(int x_id, int y_id){return smoothed_[x_id][y_id];}
-        Point get_center_point(int x_id, int y_id){return locator_(x_id,y_id);}
 
-        Block_content(int sidelen, std::function<Point(int,int)> locator, std::function<RGB(int,int)> func_center, std::function<RGB(int,int)> func_smoothed, bool parity):
-                sidelength(sidelen), locator_(locator), centered_(Lazy_mat<RGB>(sidelen,sidelen,func_center)),smoothed_(Lazy_mat<RGB>(sidelen,sidelen,func_smoothed)), parameter_parity(parity){}
-    };
-
-    Option<Block_content> get_block_content(Symbol_scanner::Block_anchor& src,Pixel_reader* reader, bool& out_parameter_parity);
-    Option<Block_type> get_block_type(Block_content& src);
-    bool demodulate_data(Block_content& src,
+    Option<Rx_block> get_block_content(Symbol_scanner::Block_anchor& src,Pixel_reader* reader, bool& out_parameter_parity);
+    Option<Block_type> get_block_type(Rx_block & src);
+    bool demodulate_data(Rx_block & src,
                          uint8_t* data_dest, int& out_len, Block_meta& out_meta);
 
-    bool demodulate_probe(Block_content& src, Pixel_reader* reader,
+    bool demodulate_probe(Rx_block & src, Pixel_reader* reader,
                           Rx_PHY_probe_result& probe_dest);
-    bool demodulate_action(Block_content& src,
+    bool demodulate_action(Rx_block & src,
                            Rx_PHY_action_result& action_dest);
 };
 

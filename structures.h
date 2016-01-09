@@ -255,6 +255,21 @@ struct Ack {
 
 //Receiver related structures
 
+class Rx_block {
+public:
+    bool parameter_parity;
+    Lazy_mat<RGB> centered_;
+    Lazy_mat<RGB> smoothed_;
+    std::function<Point(int,int)> locator_;
+    int sidelength;
+    RGB get_center_color(int x_id, int y_id){return centered_[x_id][y_id];}
+    RGB get_smoothed_color(int x_id, int y_id){return smoothed_[x_id][y_id];}
+    Point get_center_point(int x_id, int y_id){return locator_(x_id,y_id);}
+
+    Rx_block(int sidelen, std::function<Point(int,int)> locator, std::function<RGB(int,int)> func_center, std::function<RGB(int,int)> func_smoothed, bool parity):
+            sidelength(sidelen), locator_(locator), centered_(Lazy_mat<RGB>(sidelen,sidelen,func_center)),smoothed_(Lazy_mat<RGB>(sidelen,sidelen,func_smoothed)), parameter_parity(parity){}
+};
+
 struct Rx_PHY_probe_result{
     RGB received_probe_colors[64];
     enum class Edge_sharpness{

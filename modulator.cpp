@@ -266,7 +266,7 @@ void Modulator::modulate_action(const Tx_PHY_action &action, Tx_block &dest) {
 }
 
 
-Demodulator::Block_content Demodulator::_get_block_content(Pixel_reader* reader_, int sidelength, Symbol_scanner::Block_anchor& anchor, bool parity) {
+Rx_block Demodulator::_get_block_content(Pixel_reader* reader_, int sidelength, Symbol_scanner::Block_anchor& anchor, bool parity) {
     auto left_top = anchor.left_top;
     auto right_top = anchor.right_top;
     auto left_bottom = anchor.left_bottom;
@@ -290,7 +290,7 @@ Demodulator::Block_content Demodulator::_get_block_content(Pixel_reader* reader_
 
         return Point(px, py);
     };
-    return Block_content(sidelength, fun_locate, [reader_, fun_locate](int x, int y) {
+    return Rx_block(sidelength, fun_locate, [reader_, fun_locate](int x, int y) {
                              auto p = fun_locate(x, y);
                              return reader_->get_RGB(p.x, p.y);
                          },
@@ -301,7 +301,7 @@ Demodulator::Block_content Demodulator::_get_block_content(Pixel_reader* reader_
 }
 
 //101 means even (false), 010 means odd (true)
-Option<Block_type> Demodulator::get_block_type(Block_content &src) {
+Option<Block_type> Demodulator::get_block_type(Rx_block &src) {
     auto c1=src.get_smoothed_color(4,0);
     auto c2=src.get_smoothed_color(src.sidelength-4, src.sidelength-1);
     bool newest;
@@ -323,7 +323,7 @@ Option<Block_type> Demodulator::get_block_type(Block_content &src) {
 //| 8 bits: FID |
 //| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) | 1 bit: last is data
 //| 5 bits: reserved |
-bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &out_len,
+bool Demodulator::demodulate_data(Rx_block &src, uint8_t *data_dest, int &out_len,
                                   Block_meta& out_meta) {
     uint8_t buffer_sec[576];
     uint8_t buffer_data[256];
@@ -396,7 +396,7 @@ bool Demodulator::demodulate_data(Block_content &src, uint8_t *data_dest, int &o
     else return false;
 }
 
-bool Demodulator::demodulate_probe(Block_content &src, Pixel_reader* reader, Rx_PHY_probe_result &probe_dest) {
+bool Demodulator::demodulate_probe(Rx_block &src, Pixel_reader* reader, Rx_PHY_probe_result &probe_dest) {
     Block_content_helper helper(src);
     //first palette
     for(int i=0;i<64;i++)
@@ -525,7 +525,7 @@ bool Demodulator::demodulate_probe(Block_content &src, Pixel_reader* reader, Rx_
     return true;
 }
 
-bool Demodulator::demodulate_action(Block_content &src, Rx_PHY_action_result &action_dest) {
+bool Demodulator::demodulate_action(Rx_block &src, Rx_PHY_action_result &action_dest) {
     static Reed_solomon_code low_rate_rs_code(16,8);
     Block_content_helper helper(src);
     bool newest;
@@ -552,7 +552,7 @@ bool Demodulator::demodulate_action(Block_content &src, Rx_PHY_action_result &ac
         return false;
 }
 
-Option<Block_content> Demodulator::get_block_content(Symbol_scanner::Block_anchor &src, Pixel_reader* reader,
+Option<Rx_block> Demodulator::get_block_content(Symbol_scanner::Block_anchor &src, Pixel_reader* reader,
                                                              bool &out_parameter_parity) {
 
     Point c1p((src.left_top->center_x+src.right_top->center_x)/2, (src.left_top->center_y+src.right_top->center_y)/2);
@@ -568,17 +568,17 @@ Option<Block_content> Demodulator::get_block_content(Symbol_scanner::Block_ancho
     c1m=(c1m==5?0:(c1m==2?1:-1));
     c2m=(c2m==5?0:(c2m==2?1:-1));
     int parity;
-    if(c1m==-1 && c2m==-1)return None<Block_content>();
+    if(c1m==-1 && c2m==-1)return None<Rx_block>();
     else if(c1m==-1)parity=c2m;
     else if(c2m==-1)parity=c1m;
-    else if(c1m!=c2m)return None<Block_content>();
+    else if(c1m!=c2m)return None<Rx_block>();
     else parity=c1m;
 
     auto& parameters=Rx_adaptive_parameters::get_global_by_parity(parity, newest_parity);
     return Some(_get_block_content(reader, parameters.block_sidelength,src,parity));
 }
 
-Demodulator::Block_content_helper::Block_content_helper(Demodulator::Block_content &content):
+Demodulator::Block_content_helper::Block_content_helper(Rx_block &content):
         pos_(0),escape_pos_(0), content_(&content),escape_buffer({
         0,1,2,3,4, content_->sidelength/2, content_->sidelength-2,content_->sidelength-1, //8
         content_->sidelength+0,content_->sidelength+1,content_->sidelength+2,content_->sidelength*2-2,content_->sidelength*2-1, //5
