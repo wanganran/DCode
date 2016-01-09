@@ -5,6 +5,7 @@
 #ifndef DCODE_RX_BUFFER_H
 #define DCODE_RX_BUFFER_H
 #include <cstdint>
+#include <algorithm>
 #include <set>
 #include "structures.h"
 #include "segment_pool.h"
@@ -14,7 +15,6 @@ private:
 
     static const int BUFFER_SIZE=256;
     static const int R=3; //repeat NACK
-    static const int NR=30; //maximum frames per RTT
     static const int K=5; //if this frame is K frames later than last sent NACK, or current negative blocks are exceeding block size, and there exist nagative blocks since last sent NACK, then send a new NACK.
     static const int D=2; //regard the most recent D received frames as non-complete frames
     static const int MAX_BLOCK_PER_PACKET=64;
@@ -325,10 +325,10 @@ private:
     }
 
     //| ret_count: 1 byte | ret_1_content_length: 1 byte | ret_1_fid: 1 byte |
-    //| ret_1_bid: 1 byte | last_is_data: 1 bit | start_of_packet: 1 bit | end_of_packet: 1 bit | padding |
+    //| ret_1_bid: 1 byte | start_of_packet: 1 bit | end_of_packet: 1 bit | packet_type: 2 bits | last_is_data: 1bit | reserved: 3bit| padding |
     //| content: n bytes |...
     int _fill_retransmission_packet(Packet* ret_packet, int first_block_id, Packet* out_packets_ptr){
-        assert(ret_packet->type==Packet_type::COMBINED_RETRANSMISSION);
+        assert(ret_packet->type==Packet_type::RETRANSMISSION);
 
         //parse the packet
         int ret_count=ret_packet->data[0];
@@ -340,11 +340,11 @@ private:
             seg->init(ptr[0]);
             seg->metadata.FID=ptr[1];
             seg->block_id=ptr[2];
-            seg->metadata.last_is_data=(ptr[3]&128)>0;
-            seg->metadata.start_of_packet=(ptr[3]&64)>0;
-            seg->metadata.end_of_packet=(ptr[3]&32)>0;
-            //fake a single retransmission
-            seg->metadata.type=Packet_type::SINGLE_BLOCK_RETRANSMISSION;
+            seg->metadata.last_is_data=(ptr[3]&32)>0;
+            seg->metadata.start_of_packet=(ptr[3]&128)>0;
+            seg->metadata.end_of_packet=(ptr[3]&64)>0;
+            seg->metadata.type=(Packet_type)((ptr[3]&24)>>3);
+            seg->metadata.reserved=(ptr[3]&(uint8_t)7);
 
             memcpy(seg->data,ptr+4,ptr[0]);
             t+=ptr[0]+4;
@@ -360,6 +360,7 @@ private:
     //this won't shift the head
     //ret doesn't need to be freed after this call.
     bool _insert_retransmission(Rx_segment* ret){
+        ret->block_id=(ret->block_id-1+size_per_frame_)%size_per_frame_;
         int id=ret->get_full_id(size_per_frame_);
         assert(!buffer_[id].is_functional_block());
         bool replace=!buffer_[id].is_vacancy();
@@ -445,11 +446,11 @@ public:
             _update_NACK(segment->get_full_id(size_per_frame_));
         });
 
+        /*
         //first, check if the segment is a standalone retransmission
         bool is_retrans_block=false;
-        if(segment->metadata.type==Packet_type::SINGLE_BLOCK_RETRANSMISSION){
+        if((segment->metadata.reserved & 4)>0){
             is_retrans_block=true;
-            segment->metadata.type=Packet_type::DATA;
         }
 
         //first, insert the segment
@@ -457,7 +458,8 @@ public:
         if(is_retrans_block)
             if(!_insert_retransmission(segment))return 0;
         else
-            if(!_insert(segment))return 0;
+            */
+        if(!_insert(segment))return 0;
 
         //second, check it complete a packet, or it is a combined retransmission block
         int left_flag, right_flag, vacancies;
@@ -469,6 +471,7 @@ public:
                 assert(buffer_[left_flag].is_start_of_packet() && buffer_[right_flag].is_end_of_packet());
                 //calculate the length
                 int length=0;
+                int32_t should_len=*(int32_t *)(buffer_[left_flag].segment->data);
                 Packet_type type=buffer_[left_flag].segment->metadata.type;
                 _foreach(left_flag,right_flag,[&](int i){
                     if(buffer_[i].segment) {
@@ -477,20 +480,23 @@ public:
                             assert(buffer_[i].segment->metadata.type == type);
                     }
                 });
-
-                out_packets_arr->init(type,length);
+                assert(should_len<=length-4);
+                out_packets_arr->init(type,should_len);
 
                 int offset=0;
                 _foreach(left_flag,right_flag,[&](int i){
-                    if(buffer_[i].segment) {
-                        memcpy(out_packets_arr->data + offset, buffer_[i].segment->data, buffer_[i].segment->data_len);
-                        offset += buffer_[i].segment->data_len;
+                    if(offset<should_len && buffer_[i].segment) {
+                        int len=std::min(should_len-offset, buffer_[i].segment->data_len);
+                        memcpy(out_packets_arr->data + offset, buffer_[i].segment->data, len);
+                        offset += len;
                     }
                 });
 
                 //check if the formed packet is a retransmission
-                if(type==Packet_type::COMBINED_RETRANSMISSION){
+                if(type==Packet_type::RETRANSMISSION){
+                    Packet* copy_current=new Packet(*out_packets_arr);
                     return _fill_retransmission_packet(out_packets_arr, left_flag, out_packets_arr);
+                    delete copy_current;
                 }
                 else return 1;
             }

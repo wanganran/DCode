@@ -20,23 +20,23 @@ static uint8_t _transform_by_mask(uint8_t mask, uint8_t data) {
         case 0:
             return 0;
         case 1:
-            return data & 1;
+            return data & (uint8_t)1;
         case 2:
-            return (data & 1) << 1;
+            return (data & (uint8_t)1) << 1;
         case 3:
-            return data & 3;
+            return data & (uint8_t)3;
         case 4:
-            return (data & 1) << 2;
+            return (data & (uint8_t)1) << 2;
         case 5:
-            return ((data & 2) << 1) | (data & 1);
+            return ((data & (uint8_t)2) << 1) | (data & (uint8_t)1);
         case 6:
-            return (data & 3) << 1;
+            return (data & (uint8_t)3) << 1;
         case 7:
-            return data & 7;
+            return data & (uint8_t)7;
     }
 }
 
-inline static uint8_t to_uint8(bool b){return b?1:0;}
+inline static uint8_t to_uint8(bool b){return (uint8_t)(b?1:0);}
 
 static uint8_t _transform_by_mask(uint8_t mask, bool* data){
     switch (mask) {
@@ -56,6 +56,7 @@ static uint8_t _transform_by_mask(uint8_t mask, bool* data){
             return (to_uint8(data[1]) << 2) | (to_uint8(data[0]) << 1);
         case 7:
             return (to_uint8(data[2]) << 2) | (to_uint8(data[1]) << 1) | to_uint8(data[0]);
+        default:return 0;
     }
 }
 static uint8_t _transform_back_by_mask(uint8_t mask, uint8_t data){
@@ -63,25 +64,26 @@ static uint8_t _transform_back_by_mask(uint8_t mask, uint8_t data){
         case 0:
             return 0;
         case 1:
-            return data & 1;
+            return data & (uint8_t)1;
         case 2:
-            return (data & 2) >> 1;
+            return (data & (uint8_t)2) >> 1;
         case 3:
-            return data & 3;
+            return data & (uint8_t)3;
         case 4:
-            return (data & 4) >> 2;
+            return (data & (uint8_t)4) >> 2;
         case 5:
-            return ((data & 4) >> 1) | (data & 1);
+            return ((data & (uint8_t)4) >> 1) | (data & (uint8_t)1);
         case 6:
-            return (data & 6) >> 1;
+            return (data & (uint8_t)6) >> 1;
         case 7:
-            return data & 7;
+            return data & (uint8_t)7;
+        default:return 0;
     }
 }
 
 void Modulator::_fill_rest_block(Modulator::Tx_block_helper& helper){
     int rest=helper.get_total_symbol_count()%3;
-    while(rest--)helper.push_primary(rest&7);
+    while(rest--)helper.push_primary((uint8_t)(rest&7));
 }
 
 void Modulator::modulate_idle(Tx_block& dest){
@@ -122,9 +124,9 @@ static int _calc_msg_size(FEC_level level_pri, FEC_level level_sec, int total_sy
 //Data packet Link layer format:
 //| 8 bits: FID |
 //| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) | 1 bit: last is data
-//| 4 bits: reserved |
+//| 3 bits: reserved | (first bit: fast retransmission)
 int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
-                             const Block_meta& meta, const Ack& ack,
+                             const Block_meta& meta,
                              int max_size) {
     auto& parameters=Tx_adaptive_parameters::current();
 
@@ -142,10 +144,10 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
 
 
     //first: encode header
-    Packet_type type=(meta.type==Packet_type::DATA?(ack.count!=0?Packet_type::ACK:Packet_type::DATA):meta.type);
+    Packet_type type=meta.type;
 
     buffer[0]=(uint8_t)(meta.FID);
-    buffer[1]=(uint8_t)((meta.end_of_packet?128:0) | (((int)type)<<5) | (meta.last_is_data?16:0));
+    buffer[1]=(uint8_t)((meta.start_of_packet?128:0) | (meta.end_of_packet?64:0) | (((int)type)<<4) | (meta.last_is_data?8:0) | (meta.reserved & 7));
 
     //second: calculate
     int k;
@@ -155,21 +157,7 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
     //third: encode
     unsigned int length=(unsigned)min(max_size, n-k-2);
 
-    //check ack
-    bool acked=ack.count==0;
-    int offset=0;
-    if(type==Packet_type::ACK){
-        offset++;
-        buffer[2]=(uint8_t)(ack.count);
-        for(int i=0;i<ack.count;i++){
-            match_Tp(ack.blocks_to_acked[i], [buffer,i, &offset](int fid, int bid, bool is_fully_damaged){
-                buffer[3+i*2]=(uint8_t)(fid&255);
-                buffer[4+i*2]=(uint8_t)bid;
-                offset+=2;
-            });
-        }
-    }
-    memcpy(buffer+2+offset, source_ptr, length-offset);
+    memcpy(buffer+2, source_ptr, length);
     coder->encode(buffer);
 
     //fourth: modulate
@@ -210,7 +198,7 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
             }
         }
     }
-    return length-offset;
+    return length;
 }
 
 static const uint8_t GRAY_CODE[8]={0,1,3,2,6,7,5,4};
@@ -322,7 +310,7 @@ Option<Block_type> Demodulator::get_block_type(Rx_block &src) {
 //Data packet Link layer format:
 //| 8 bits: FID |
 //| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) | 1 bit: last is data
-//| 5 bits: reserved |
+//| 5 bits: reserved | (currently: first bit: fast retransmission)
 bool Demodulator::demodulate_data(Rx_block &src, uint8_t *data_dest, int &out_len,
                                   Block_meta& out_meta) {
     uint8_t buffer_sec[576];
@@ -382,10 +370,11 @@ bool Demodulator::demodulate_data(Rx_block &src, uint8_t *data_dest, int &out_le
     auto &decoder = coder_buffered_.get_coder(n, k);
     if (decoder->decode(buffer_data)) {
         out_meta.FID = buffer_data[0];
-        out_meta.start_of_packet = (buffer_data[0] & 1) == 1;
-        out_meta.end_of_packet = (buffer_data[1] >> 7) == 1;
-        out_meta.type = (Packet_type) ((buffer_data[1] >> 5) & 3);
-        out_meta.last_is_data = ((buffer_data[1] >> 4) & 1) == 1;
+        out_meta.start_of_packet = (buffer_data[1] & 128)>0;
+        out_meta.end_of_packet = (buffer_data[1] &64)>0;
+        out_meta.type = (Packet_type) ((buffer_data[1] >> 4) & 3);
+        out_meta.last_is_data = ((buffer_data[1] >> 3) & 1) == 1;
+        out_meta.reserved=(buffer_data[1]&(uint8_t)7);
 
         out_len = n - k - 2;
 

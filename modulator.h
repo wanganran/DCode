@@ -150,7 +150,7 @@ public:
 
     //return the length of modulated data
     int modulate_data(const uint8_t* source_ptr, Tx_block& dest,
-                      const Block_meta& meta, const Ack& ack,
+                      const Block_meta& meta,
                       int max_size=-1);
 
 

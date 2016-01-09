@@ -34,8 +34,7 @@ enum class FEC_level{
 enum class Packet_type{
     DATA,
     ACK,
-    SINGLE_BLOCK_RETRANSMISSION,
-    COMBINED_RETRANSMISSION
+    RETRANSMISSION
 };
 
 struct Block_meta{
@@ -44,6 +43,7 @@ struct Block_meta{
     bool end_of_packet;
     int FID;
     Packet_type type;
+    uint8_t reserved;
 };
 
 
@@ -59,6 +59,14 @@ public:
         if(data)delete[] data;
         data=new uint8_t[len];
         length=len;
+    }
+
+    Packet(const Packet& packet):type(packet.type), length(packet.length){
+        if(packet.data){
+            data=new uint8_t[length];
+            memcpy(data, packet.data, length);
+        }
+        else data=nullptr;
     }
 
     ~Packet() {
