@@ -36,6 +36,9 @@ public:
         while(count_==0)cv_empty_.wait(lock);
         return array_[head_];
     }
+    bool is_empty(){
+        return count_==0;
+    }
     void push(const T val){
         std::unique_lock<std::mutex> lock(lock_);
         while(count_==capacity_)cv_full_.wait(lock);

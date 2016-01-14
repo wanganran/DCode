@@ -6,7 +6,7 @@
 #include "screen_fetcher_Android.h"
 #include "utils/constants.h"
 Screen_fetcher_Android::Screen_fetcher_Android():
-        array_size_(Config::current()->hardware_config.tx_height*Config::current()->hardware_config.tx_width*3),
+        array_size_(Config::current().hardware_config.tx_height*Config::current().hardware_config.tx_width*3),
         QUEUE_SIZE(CONST(SCREEN_PAINTER_QUEUE_SIZE,int)),
         queue_(QUEUE_SIZE),
         buffer_(QUEUE_SIZE),
@@ -28,6 +28,10 @@ uint8_t* Screen_fetcher_Android::fetch_buffer() {
 
 void Screen_fetcher_Android::push_buffer(uint8_t *t) {
     queue_.push(t);
+}
+
+bool Screen_fetcher_Android::is_flushed(){
+    return queue_.is_empty();
 }
 
 void Screen_fetcher_Android::paint(uint8_t *destination) {

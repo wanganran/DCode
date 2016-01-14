@@ -12,7 +12,6 @@ using namespace std;
 
 Symbol_scanner::Symbol_scanner(Pixel_reader *reader) {
     this->reader_=reader;
-    this->config_=Config::current();
 }
 
 

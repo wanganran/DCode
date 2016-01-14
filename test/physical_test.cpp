@@ -10,14 +10,14 @@
 using namespace std;
 
 void physical_test(){
-    Config* config=Config::current();
+    Config& config=Config::current();
     Camera_fetcher* fetcher=new Camera_fetcher(3);
     Physical* phy=new Physical(config,nullptr,fetcher);
 
     auto YUV_path="/Users/wanganran/test.yuv";
-    uint8_t* arr=new uint8_t[config->hardware_config.rx_height*config->hardware_config.rx_width*3/2];
+    uint8_t* arr=new uint8_t[config.hardware_config.rx_height*config.hardware_config.rx_width*3/2];
     auto f=fopen(YUV_path,"rb");
-    fread(arr,sizeof(uint8_t),config->hardware_config.rx_height*config->hardware_config.rx_width*3/2,f);
+    fread(arr,sizeof(uint8_t),config.hardware_config.rx_height*config.hardware_config.rx_width*3/2,f);
     fclose(f);
     fetcher->assign(&arr,1);
     fetcher->ready(fetcher->lock_one());

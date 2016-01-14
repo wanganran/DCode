@@ -245,20 +245,13 @@ struct Tx_PHY_action{
 };
 
 struct Ack {
-    static const int MAX_ACK_COUNT=8;
     //(FID,BID,is_fully_damaged) pairs
-    Tp<int, int, bool> blocks_to_acked[MAX_ACK_COUNT];
+    std::vector<Tp<int, int, bool>> blocks_to_acked;
     int count;
 
     Ack():count(0){}
 
-    bool operator ==(const Ack& rhs){return this->count==0 && rhs.count==0;}
-    bool operator !=(const Ack& rhs){return !(*this==rhs);}
-
-    static Ack& empty() {
-        static Ack singleton;
-        return singleton;
-    }
+    bool is_empty(){return count==0;}
 };
 
 //Receiver related structures

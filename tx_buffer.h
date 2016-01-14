@@ -6,6 +6,8 @@
 #define DCODE_TX_BUFFER_H
 
 #include "structures.h"
+#include "modulator.h"
+#include <thread>
 
 class Tx_buffer{
 private:
@@ -40,6 +42,48 @@ private:
         Packet_type packet_type;
         Packet_ref in_packet;
     };
+
+    struct In_ref{
+    public:
+        static const int PACKET=1;
+        static const int ACTION=2;
+        static const int PROBE=3;
+
+        int in_type;
+
+        union _Workload{
+            std::shared_ptr<Packet> in_packet;
+            Tx_PHY_action in_action;
+            Tx_PHY_probe in_probe;
+            _Workload(std::shared_ptr<Packet> packet):in_packet(packet){}
+            _Workload(const Tx_PHY_probe& probe):in_probe(probe){}
+            _Workload(const Tx_PHY_action& action):in_action(action){}
+        } workload;
+
+        In_ref(std::shared_ptr<Packet> packet):in_type(PACKET), workload(packet){}
+        In_ref(const Tx_PHY_probe& probe):in_type(PROBE), workload(probe){}
+        In_ref(const Tx_PHY_action& action):in_type(ACTION), workload(action){}
+    };
+
+    std::queue<In_ref> urgent_queue_;
+    std::queue<In_ref> regular_queue_;
+
+    Screen_fetcher* fetcher_;
+    std::thread worker_thread_;
+    bool worker_thread_flag_;
+    static void worker_thread_func(Tx_buffer*, Screen_fetcher*);
+
+
+public:
+
+    void push_packet(uint8_t* source, int length);
+    void push_ack(const Ack& ack);
+    void push_action_block(const Tx_PHY_action& action);
+    void push_probe_block(const Tx_PHY_probe& probe);
+
+    void reset(Screen_fetcher* fetcher);
+
+    Tx_buffer(Screen_fetcher* fetcher);
 };
 
 #endif //DCODE_TX_BUFFER_H

@@ -12,7 +12,6 @@
 class Symbol_scanner{
 private:
     Pixel_reader* reader_;
-    Config* config_;
 public:
     Symbol_scanner(Pixel_reader* reader);
 

@@ -31,7 +31,7 @@ private:
             secondary_enable_mask_[i]=0;
             //by default, the threshold is 100.
             //need to be changed
-            primary_thresholds_[i]=Config::current()->recognition_config.initial_color_channel_threshold;
+            primary_thresholds_[i]=Config::current().recognition_config.initial_color_channel_threshold;
         }
         mask_=7;
     }

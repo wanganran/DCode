@@ -28,6 +28,7 @@ public:
     ~Screen_fetcher_Android();
 
     //to JNI
+    bool is_flushed();
     void paint(uint8_t* destination);
 
     //to Physical

@@ -13,8 +13,8 @@
 class Frame_painter {
     static bool paint_to_screen(Screen_painter *painter, const Tx_frame &frame){
         auto& config=Config::current();
-        auto width=config->hardware_config.tx_width;
-        auto height=config->hardware_config.tx_height;
+        auto width=config.hardware_config.tx_width;
+        auto height=config.hardware_config.tx_height;
         auto sidelength=frame.get_block_ref(0,0).sidelength;
         auto vcount=frame.get_total_symbol_vertical_count_with_border(sidelength);
         auto hcount=frame.get_total_symbol_horizontal_count_with_border(sidelength);

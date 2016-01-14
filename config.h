@@ -8,8 +8,9 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include <utility>
+#include "utils/utils.h"
 
-struct Config{
+struct Config : public Noncopyable{
 private:
     inline static bool __exists (const char* name) {
         struct stat buffer;
@@ -75,54 +76,50 @@ public:
                 distortion_level(_distortion_level){}
     } recognition_config;
 
-
     Config(Hardware_config&& h_config, Barcode_config&& b_config, Performance_config&& p_config, Recognition_config&& r_config):
             hardware_config(std::move(h_config)),
             barcode_config(std::move(b_config)),
             performance_config(std::move(p_config)), recognition_config(r_config) {}
 
-    static std::unique_ptr<Config>& current(){
-        static std::unique_ptr<Config> singleton(nullptr);
-        if(singleton)return singleton;
-        else{
-            if(!__exists(CONFIG_PATH())) {
-                FILE* fp=fopen(CONFIG_PATH(), "w");
-                fprintf(fp,"%d %d %d %d\n", 1920,1080,1902,1080);
-                fprintf(fp,"%d %d %d %d\n", 12,16,20,24);
-                fprintf(fp,"%d %d\n",2,10);
-            }
-            FILE *fp = fopen(CONFIG_PATH(), "r");
-            int tx_width = read_int(fp);
-            int tx_height = read_int(fp);
-            int rx_width = read_int(fp);
-            int rx_height = read_int(fp);
+    static Config& current() {
+        if (!__exists(CONFIG_PATH())) {
+            FILE *fp = fopen(CONFIG_PATH(), "w");
+            fprintf(fp, "%d %d %d %d\n", 1920, 1080, 1902, 1080);
+            fprintf(fp, "%d %d %d %d\n", 12, 16, 20, 24);
+            fprintf(fp, "%d %d\n", 2, 10);
+        }
+        FILE *fp = fopen(CONFIG_PATH(), "r");
+        int tx_width = read_int(fp);
+        int tx_height = read_int(fp);
+        int rx_width = read_int(fp);
+        int rx_height = read_int(fp);
 
-            int supported_block_size_0 = read_int(fp);
-            int supported_block_size_1 = read_int(fp);
-            int supported_block_size_2 = read_int(fp);
-            int supported_block_size_3 = read_int(fp);
+        int supported_block_size_0 = read_int(fp);
+        int supported_block_size_1 = read_int(fp);
+        int supported_block_size_2 = read_int(fp);
+        int supported_block_size_3 = read_int(fp);
 
-            int vcount=read_int(fp);
-            int hcount=read_int(fp);
+        int vcount = read_int(fp);
+        int hcount = read_int(fp);
 
-            int thread_count = read_int(fp);
-            int LDPC_max_iteration = read_int(fp);
+        int thread_count = read_int(fp);
+        int LDPC_max_iteration = read_int(fp);
 
-            int initial_color_channel_threshold=read_int(fp);
-            int vignette_depth=read_int(fp);
-            double vignette_width=read_double(fp);
-            int distortion_level=read_int(fp);
+        int initial_color_channel_threshold = read_int(fp);
+        int vignette_depth = read_int(fp);
+        double vignette_width = read_double(fp);
+        int distortion_level = read_int(fp);
 
-            singleton.reset(new Config(
+        static Config singleton(
                 Hardware_config(tx_width, tx_height, rx_width, rx_height),
                 Barcode_config(supported_block_size_0, supported_block_size_1, supported_block_size_2,
-                               supported_block_size_3, vcount,hcount),
+                               supported_block_size_3, vcount, hcount),
                 Performance_config(thread_count, LDPC_max_iteration),
-                Recognition_config(initial_color_channel_threshold,vignette_depth,vignette_width,distortion_level)
-            ));
+                Recognition_config(initial_color_channel_threshold, vignette_depth, vignette_width, (Config::Recognition_config::Distortion_level)distortion_level)
+        );
 
-            return singleton;
-        }
+        return singleton;
+
     }
 };
 
