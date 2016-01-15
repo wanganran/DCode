@@ -21,6 +21,7 @@ static void Tx_buffer::worker_thread_func(Tx_buffer* buffer, Screen_fetcher* fet
         if(last_packet){
             if(last_packet->length<=last_packet_offset)last_packet=nullptr;
             else {
+                modulator.modulate_data(last_packet->data+last_packet_offset, dest);
             }
         }
         //every loop generate one frame
