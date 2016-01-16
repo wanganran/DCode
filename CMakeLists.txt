@@ -41,4 +41,4 @@ add_executable(DCode ${SOURCE_FILES}
                utils/reed_solomon_code.cpp
                utils/reed_solomon_code.h
                utils/hamming128.h
-               frame_painter.h rx_buffer.h segment_pool.h tx_buffer.h rx_buffer.cpp tx_buffer.cpp)
+               frame_painter.h rx_buffer.h segment_pool.h tx_buffer.h rx_buffer.cpp tx_buffer.cpp ack_buffer.h ack_buffer.cpp)

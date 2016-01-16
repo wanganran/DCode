@@ -8,6 +8,7 @@
 #include "structures.h"
 #include "modulator.h"
 #include <thread>
+#include <future>
 
 class Tx_buffer{
 private:
@@ -50,6 +51,7 @@ private:
         static const int PROBE=3;
 
         int in_type;
+        std::promise<bool> sent;
 
         union _Workload{
             std::shared_ptr<Packet> in_packet;
@@ -76,10 +78,10 @@ private:
 
 public:
 
-    void push_packet(uint8_t* source, int length);
-    void push_ack(const Ack& ack);
-    void push_action_block(const Tx_PHY_action& action);
-    void push_probe_block(const Tx_PHY_probe& probe);
+    std::future<bool> push_packet(uint8_t* source, int length);
+    std::future<bool> push_ack(const Ack& ack);
+    std::future<bool> push_action_block(const Tx_PHY_action& action);
+    std::future<bool> push_probe_block(const Tx_PHY_probe& probe);
 
     void reset(Screen_fetcher* fetcher);
 
