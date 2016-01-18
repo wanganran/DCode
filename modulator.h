@@ -148,10 +148,11 @@ private:
 public:
     void modulate_idle(Tx_block& dest);
 
+
     //return the length of modulated data
     int modulate_data(const uint8_t* source_ptr, Tx_block& dest,
                       const Block_meta& meta,
-                      int max_size=-1);
+                      int max_size=-1, bool auto_mark_end_of_pkt=false);
 
 
     //Tx->Rx

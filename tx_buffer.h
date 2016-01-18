@@ -9,6 +9,7 @@
 #include "modulator.h"
 #include <thread>
 #include <future>
+#include <mutex>
 
 class Tx_buffer{
 private:
@@ -40,7 +41,6 @@ private:
     struct Block_ref{
     public:
         Block_type block_type;
-        Packet_type packet_type;
         Packet_ref in_packet;
     };
 
@@ -49,6 +49,8 @@ private:
         static const int PACKET=1;
         static const int ACTION=2;
         static const int PROBE=3;
+
+        In_ref(In_ref&& ref)=default;
 
         int in_type;
         std::promise<bool> sent;
@@ -69,13 +71,17 @@ private:
 
     std::queue<In_ref> urgent_queue_;
     std::queue<In_ref> regular_queue_;
+    std::mutex queue_mutex_;
 
     Screen_fetcher* fetcher_;
     std::thread worker_thread_;
     bool worker_thread_flag_;
     static void worker_thread_func(Tx_buffer*, Screen_fetcher*);
 
-
+    void _update_block_ref(int fid, int block_id, const Packet_ref& ref);
+    void _update_block_ref(int fid, int block_id, Block_type type);
+    std::shared_ptr<Packet> _form_retrans_packet(const Ack& ack);
+    std::shared_ptr<Packet> _form_ack_packet(const Ack& ack);
 public:
 
     std::future<bool> push_packet(uint8_t* source, int length);

@@ -125,9 +125,10 @@ static int _calc_msg_size(FEC_level level_pri, FEC_level level_sec, int total_sy
 //| 8 bits: FID |
 //| 1 bit: start of packet | 1 bit: end of packet | 2 bits: packet type (data/ack/retransmission) | 1 bit: last is data
 //| 3 bits: reserved | (first bit: fast retransmission)
+// NOTICE: auto_mark_end_of_pkt will automatically mark end of the packet if max_size is reached
 int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
                              const Block_meta& meta,
-                             int max_size) {
+                             int max_size, bool auto_mark_end_of_pkt) {
     auto& parameters=Tx_adaptive_parameters::current();
 
     dest.init(parameters.block_sidelength, Block_type::DATA, 0, parameters.parity);
@@ -142,21 +143,21 @@ int Modulator::modulate_data(const uint8_t *source_ptr, Tx_block &dest,
 
     uint8_t buffer[MAX_BLOCK_SIZE];
 
-
-    //first: encode header
-    Packet_type type=meta.type;
-
-    buffer[0]=(uint8_t)(meta.FID);
-    buffer[1]=(uint8_t)((meta.start_of_packet?128:0) | (meta.end_of_packet?64:0) | (((int)type)<<4) | (meta.last_is_data?8:0) | (meta.reserved & 7));
-
-    //second: calculate
+    //first: calculate
     int k;
     int n=_calc_msg_size(parameters.FEC_strength_primary, parameters.FEC_strength_secondary, helper.get_total_symbol_count(),parameters.color_sec_mask, k);
     auto& coder=coder_buffered_.get_coder(n,k);
 
-    //third: encode
     unsigned int length=(unsigned)min(max_size, n-k-2);
 
+    //second: encode header
+    Packet_type type=meta.type;
+
+    bool end_of_pkt=auto_mark_end_of_pkt?(max_size<=n-k-2):meta.end_of_packet;
+    buffer[0]=(uint8_t)(meta.FID);
+    buffer[1]=(uint8_t)((meta.start_of_packet?128:0) | (end_of_pkt?64:0) | (((int)type)<<4) | (meta.last_is_data?8:0) | (meta.reserved & 7));
+
+    //third: encode
     memcpy(buffer+2, source_ptr, length);
     coder->encode(buffer);
 
