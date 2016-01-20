@@ -245,13 +245,10 @@ struct Tx_PHY_action{
 };
 
 struct Ack {
-    //(FID,BID,is_fully_damaged) pairs
-    std::vector<Tp<int, int, bool>> blocks_to_acked;
-    int count;
+    std::vector<int> blocks_to_acked;
+    Ack(){}
 
-    Ack():count(0){}
-
-    bool is_empty(){return count==0;}
+    bool is_empty(){return blocks_to_acked.size()==0;}
 };
 
 //Receiver related structures
@@ -339,7 +336,7 @@ struct Rx_frame: public Noncopyable{
         }
     }
 };
-*/
+
 struct Tx_window: public Noncopyable{
     const static int WINDOW_SIZE_HIGH=10;
     const static int WINDOW_SIZE_LOW=10;
@@ -358,6 +355,8 @@ public:
 
     Packet* pull_packet();
 };
+ */
+
 /*
 struct Rx_window: public Noncopyable{
     const static int WINDOW_SIZE=64;

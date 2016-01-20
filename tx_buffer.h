@@ -25,7 +25,7 @@ private:
         }
         return 1<<shift;
     }
-    static const int BUFFER_SIZE=_SHIFT2(NR+K*(R+1)+D);
+    static const int BUFFER_SIZE=_SHIFT2(NR+(K+D)*(R+1));
     static const int K=5; //if this frame is K frames later than last sent NACK, or current negative blocks are exceeding block size, and there exist nagative blocks since last sent NACK, then send a new NACK.
     static const int D=2; //regard the most recent D received frames as non-complete frames
     static const int MAX_BLOCK_PER_PACKET=64;
@@ -34,15 +34,39 @@ private:
         std::shared_ptr<Packet> pkt;
         int pos;
         int len;
+
         Packet_ref(std::shared_ptr<Packet> _pkt, int _pos, int _len):pkt(_pkt), pos(_pos),len(_len){}
         Packet_ref(): pkt(nullptr), pos(0),len(0){}
+
+        void clear(){
+            pkt=nullptr;
+            pos=len=0;
+        }
     };
 
     struct Block_ref{
     public:
+        int full_id;
         Block_type block_type;
         Packet_ref in_packet;
+
+        void clear(){
+            this->in_packet.clear();
+            full_id=-1;
+            block_type=Block_type::IDLE;
+        }
     };
+
+    Block_ref* block_buffer_;
+    int block_per_frame_;
+    int total_block_ref_count_;
+
+    Block_ref* _get_block_ref(int id){
+        int sid=id%BUFFER_SIZE;
+        Block_ref& res=block_buffer_[sid];
+        if(res.full_id%ID_RANGE==id%ID_RANGE)return &res;
+        else return nullptr;
+    }
 
     struct In_ref{
     public:
@@ -73,25 +97,26 @@ private:
     std::queue<In_ref> regular_queue_;
     std::mutex queue_mutex_;
 
-    Screen_fetcher* fetcher_;
     std::thread worker_thread_;
     bool worker_thread_flag_;
-    static void worker_thread_func(Tx_buffer*, Screen_fetcher*);
+    static void worker_thread_func(Tx_buffer*, Physical*);
 
     void _update_block_ref(int fid, int block_id, const Packet_ref& ref);
     void _update_block_ref(int fid, int block_id, Block_type type);
-    std::shared_ptr<Packet> _form_retrans_packet(const Ack& ack);
+    std::vector<std::shared_ptr<Packet>> _form_retrans_packet(const Ack& ack);
     std::shared_ptr<Packet> _form_ack_packet(const Ack& ack);
 public:
 
-    std::future<bool> push_packet(uint8_t* source, int length);
+    std::future<bool> push_packet(uint8_t* source, unsigned int length);
     std::future<bool> push_ack(const Ack& ack);
     std::future<bool> push_action_block(const Tx_PHY_action& action);
     std::future<bool> push_probe_block(const Tx_PHY_probe& probe);
 
-    void reset(Screen_fetcher* fetcher);
+    void reset(Physical* phy);
 
-    Tx_buffer(Screen_fetcher* fetcher);
+    Tx_buffer(Physical* phy);
+
+    ~Tx_buffer();
 };
 
 #endif //DCODE_TX_BUFFER_H

@@ -11,6 +11,7 @@
 #include "utils/constants.h"
 
 class Frame_painter {
+public:
     static bool paint_to_screen(Screen_painter *painter, const Tx_frame &frame){
         auto& config=Config::current();
         auto width=config.hardware_config.tx_width;
