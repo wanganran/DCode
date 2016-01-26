@@ -17,6 +17,10 @@ private:
     static const int R=3; //repeat NACK
     static const int NR=30; //maximum frames per RTT
 
+    uint8_t _FRAME_ID(int full_id){return (uint8_t)(full_id/block_per_frame_);}
+
+    uint8_t _BLOCK_ID(int full_id){return (uint8_t)(full_id%block_per_frame_);}
+
     constexpr int _SHIFT2(int x){
         int shift=0;
         while(x>0){
@@ -50,10 +54,13 @@ private:
         Block_type block_type;
         Packet_ref in_packet;
 
+        bool has_retransmitted;
+
         void clear(){
             this->in_packet.clear();
             full_id=-1;
             block_type=Block_type::IDLE;
+            this->has_retransmitted=false;
         }
     };
 

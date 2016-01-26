@@ -68,6 +68,13 @@ public:
         }
         else data=nullptr;
     }
+    Packet(Packet&& pkt):type(pkt.type),length(pkt.length){
+        if(pkt.data){
+            data=pkt.data;
+            pkt.data=nullptr;
+            pkt.length-=1;
+        }
+    }
 
     ~Packet() {
         if(data)
@@ -249,6 +256,27 @@ struct Ack {
     Ack(){}
 
     bool is_empty(){return blocks_to_acked.size()==0;}
+};
+
+struct Tx_ack{
+    struct Ack_entry {
+        bool is_sequential;
+        union {
+            uint8_t single_bid;
+            struct {
+                uint8_t from;
+                uint8_t to;
+            } sequential_bid;
+        } bids;
+    };
+    struct Ack_frame{
+        uint8_t fid;
+        bool flipped;
+
+        std::vector<Ack_entry> entries;
+    };
+
+    std::vector<Ack_frame> frame_acks;
 };
 
 //Receiver related structures
