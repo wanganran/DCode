@@ -243,7 +243,7 @@ void Tx_buffer::_update_block_ref(int fid, int block_id, const Tx_buffer::Packet
     block_buffer_[related_id].clear();
     block_buffer_[related_id].block_type=Block_type::DATA;
     block_buffer_[related_id].in_packet=ref;
-    block_buffer_[related_id].full_id=fid*;
+    block_buffer_[related_id].full_id=fid*block_per_frame_+block_id;
 }
 
 void Tx_buffer::_update_block_ref(int fid, int block_id, Block_type type) {
