@@ -119,7 +119,6 @@ public:
     std::future<bool> push_action_block(const Tx_PHY_action& action);
     std::future<bool> push_probe_block(const Tx_PHY_probe& probe);
 
-    void reset(Physical* phy);
 
     Tx_buffer(Physical* phy);
 

@@ -207,6 +207,7 @@ Tx_buffer::Tx_buffer(Physical* phy){
     worker_thread_=std::thread(Tx_buffer::worker_thread_func,this,phy);
 }
 
+//Reset the tx_buffer not generating frames
 Tx_buffer::~Tx_buffer(){
     if(block_buffer_)delete[] block_buffer_;
     if(worker_thread_flag_) {
@@ -227,15 +228,11 @@ std::future<bool> Tx_buffer::push_ack(const Ack &ack) {
 }
 
 std::future<bool> Tx_buffer::push_action_block(const Tx_PHY_action &action) {
-
+    urgent_queue_.push(In_ref(action));
 }
 
 std::future<bool> Tx_buffer::push_probe_block(const Tx_PHY_probe &probe) {
-
-}
-
-void Tx_buffer::reset(Physical* phy) {
-
+    urgent_queue_.push(In_ref(probe));
 }
 
 void Tx_buffer::_update_block_ref(int fid, int block_id, const Tx_buffer::Packet_ref &ref) {
@@ -247,7 +244,10 @@ void Tx_buffer::_update_block_ref(int fid, int block_id, const Tx_buffer::Packet
 }
 
 void Tx_buffer::_update_block_ref(int fid, int block_id, Block_type type) {
-
+    auto rid=fid*block_per_frame_+block_id;
+    block_buffer_[rid%BUFFER_SIZE].clear();
+    block_buffer_[rid%BUFFER_SIZE].block_type=type;
+    block_buffer_[rid%BUFFER_SIZE].full_id=rid;
 }
 
 

@@ -11,8 +11,14 @@
 
 struct Rx_adaptive_parameters{
 private:
-    Rx_adaptive_parameters(){
-        //TODO: initial configurations
+    Rx_adaptive_parameters():update_tick(0),
+                             block_sidelength(12),
+                             color_sec_mask(0),
+                             FEC_strength_secondary(FEC_level::MID),
+                             FEC_strength_primary(FEC_level::MID),
+                             palette_matcher(nullptr),
+                             palette_analyzer(nullptr)
+    {
     }
 
 public:
@@ -25,7 +31,9 @@ public:
     FEC_level FEC_strength_primary;
     FEC_level FEC_strength_secondary;
 
-    bool palette_analyzer_combine();
+    bool palette_analyzer_combine(){
+
+    }
 
     static Rx_adaptive_parameters& get_global_by_parity(bool parity, bool& out_is_newest){
         static Rx_adaptive_parameters singleton_odd;
