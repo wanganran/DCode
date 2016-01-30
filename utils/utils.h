@@ -559,4 +559,11 @@ int64_t get_current_millis(){
     return ms.count();
 }
 
+constexpr int64_t get_time_span(int min, int sec){
+    std::chrono::milliseconds res=std::chrono::duration_cast< std::chrono::milliseconds >(
+            std::chrono::minutes(min)+std::chrono::seconds(sec)
+    );
+    return res.count();
+}
+
 #endif //DCODE_UTILS_H

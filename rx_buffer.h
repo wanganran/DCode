@@ -9,6 +9,7 @@
 #include <set>
 #include "structures.h"
 #include "segment_pool.h"
+#include "ack_buffer.h"
 
 class Rx_buffer{
 private:
@@ -38,18 +39,18 @@ private:
     int NACK_buffer_tail_;
 
     //init a new NACK.
-    void _shift_NACK_buffer(){
+    void _shift_NACK_buffer(int begin){
         int old_peak=NACK_buffer_peak_;
         NACK_buffer_peak_=(NACK_buffer_peak_+1)%R;
         if(NACK_buffer_tail_==NACK_buffer_peak_)NACK_buffer_tail_=(NACK_buffer_tail_+1)%R;
-        _clear_NACK(NACK_buffer_peak_,NACK_buffer_[old_peak].top_buffer_idx);
+        _clear_NACK(NACK_buffer_peak_,begin);
     }
 
     //clear a certain NACK
-    void _clear_NACK(int NACK_idx, int last_top_buffer_idx){
+    void _clear_NACK(int NACK_idx, int start_buffer_idx){
         NACK_buffer_[NACK_idx].negative_blocks.clear();
-        NACK_buffer_[NACK_idx].start_from_buffer_idx=_next(last_top_buffer_idx);
-        NACK_buffer_[NACK_idx].top_buffer_idx=last_top_buffer_idx;
+        NACK_buffer_[NACK_idx].start_from_buffer_idx=start_buffer_idx;
+        NACK_buffer_[NACK_idx].top_buffer_idx=start_buffer_idx;
     }
 
     //init the pointers and clear the first NACK.
@@ -62,7 +63,7 @@ private:
     }
 
     //insert a new NACK entry to current peak NACK
-    bool _update_NACK(int updated_id) {
+    void _update_NACK(int updated_id) {
         //only care D frames before updated_id
         int till_block_id = ((updated_id / size_per_frame_ - D + BUFFER_SIZE) * size_per_frame_ + size_per_frame_ - 1) %
                             buffer_size_;
@@ -76,6 +77,35 @@ private:
                         nack_buffer.top_buffer_idx = id;
                 }
             });
+
+        //check if an ack is to be submitted
+        int diff_unit=K*size_per_frame_;
+        for(int t=0;t<R;t++) {
+            int thres = (nack_buffer.start_from_buffer_idx + diff_unit) % buffer_size_;
+            if (!_cross(nack_buffer.start_from_buffer_idx, _prev(thres), till_block_id)) {
+                //till_block_id excceed the buffer expiration
+                //if first visit, submit the ack
+                if(t==0)Ack_buffer::shared().push_ack(_form_ack());
+                _shift_NACK_buffer(thres);
+                nack_buffer=NACK_buffer_[NACK_buffer_peak_];
+            }
+            else return;
+        }
+
+        _init_NACK(updated_id);
+    }
+
+    Ack _form_ack(){
+        Ack out_ack;
+        out_ack.blocks_to_acked.clear();
+        int i=NACK_buffer_tail_;
+        while(i!=NACK_buffer_peak_){
+            for(auto id:NACK_buffer_[i].negative_blocks)
+                out_ack.blocks_to_acked.push_back(id);
+            i++;
+            if(i==R)i=0;
+        }
+        return out_ack;
     }
 
     ///end NACK buffer
@@ -89,19 +119,19 @@ private:
         bool is_vacancy(){return segment==nullptr && !is_functional_;} //if vacancy, segment and node_ref must be nullptr
         bool is_functional_block(){return is_functional_;}
 
-        bool init_as_functional(){
+        void init_as_functional(){
             is_functional_=true;
             if(segment){
                 Segment_pool::shared().free(segment);
                 segment= nullptr;
             }
         }
-        bool init_as_segment(Rx_segment* segment_){
+        void init_as_segment(Rx_segment* segment_){
             if(segment)Segment_pool::shared().free(segment);
             segment=segment_;
             is_functional_=false;
         }
-        bool reset(){
+        void reset(){
             if(segment)Segment_pool::shared().free(segment);
             segment= nullptr;
             is_functional_=false;
@@ -351,7 +381,7 @@ private:
             t+=ptr[0]+4;
 
             if(!_cross(seg->get_full_id(size_per_frame_), _prev(first_block_id),head_idx_))
-                out_count+=receive(seg,out_packets_ptr);
+                out_count+=receive(seg,out_packets_ptr+out_count,true);
             else
                 Segment_pool::shared().free(seg);
         }
@@ -438,6 +468,12 @@ private:
         return true;
     }
 
+    int64_t last_tick_=-1;
+    int64_t timeout_=get_time_span(0,2);
+    //check if a large time span is passed since last receive.
+    bool _check_timeout(){
+        return get_current_millis()-last_tick_>timeout_;
+    }
 
     ///end buffer manipulations
 public:
@@ -445,7 +481,7 @@ public:
         _init_buffer();
     }
     //the segment doesn't need to be freed after the call.
-    int receive(Rx_segment* segment, Packet* out_packets_arr);
+    int receive(Rx_segment* segment, Packet* out_packets_arr, bool is_retrans=false);
     //reset all data
     void reset();
     //receive a function (buffer, size, peak, tail)->bool). Shift NACK buffer if returning true

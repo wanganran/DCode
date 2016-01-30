@@ -220,19 +220,25 @@ std::future<bool> Tx_buffer::push_packet(uint8_t *source, unsigned int length) {
     std::shared_ptr<Packet> packet=std::make_shared<Packet>();
     packet->init(Packet_type::DATA,length);
     memcpy(packet->data,source, length);
-}
 
-std::future<bool> Tx_buffer::push_ack(const Ack &ack) {
-    uint8_t packet_buffer[MAX_ACK_PACKET_SIZE];
-
+    In_ref ref(std::move(packet));
+    auto fut=ref.sent.get_future();
+    regular_queue_.push(std::move(ref));
+    return fut;
 }
 
 std::future<bool> Tx_buffer::push_action_block(const Tx_PHY_action &action) {
-    urgent_queue_.push(In_ref(action));
+    In_ref ref(action);
+    auto fut=ref.sent.get_future();
+    urgent_queue_.push(std::move(ref));
+    return fut;
 }
 
 std::future<bool> Tx_buffer::push_probe_block(const Tx_PHY_probe &probe) {
-    urgent_queue_.push(In_ref(probe));
+    In_ref ref(probe);
+    auto fut=ref.sent.get_future();
+    urgent_queue_.push(std::move(ref));
+    return fut;
 }
 
 void Tx_buffer::_update_block_ref(int fid, int block_id, const Tx_buffer::Packet_ref &ref) {
@@ -257,7 +263,7 @@ std::vector<std::shared_ptr<Packet>> Tx_buffer::_form_retrans_packet(const Ack &
 
     for (auto id : ack.blocks_to_acked) {
         auto block_ref = _get_block_ref(id);
-        if (block_ref && block_ref->block_type == Block_type::DATA) {
+        if (block_ref && !block_ref->has_retransmitted && block_ref->block_type == Block_type::DATA) {
             //mark the portion of that packet
             auto &pkt = block_ref->in_packet.pkt;
             auto ptr = missed_map.find(pkt);
@@ -355,6 +361,7 @@ std::vector<std::shared_ptr<Packet>> Tx_buffer::_form_retrans_packet(const Ack &
                                     (_get_block_ref(ref_id - 1) == nullptr ? 0 : 8));
                 memcpy(ptr + 4, ref->in_packet.pkt->data + ref->in_packet.pos, ref->in_packet.len);
                 ptr += 4 + ref->in_packet.len;
+                ref->has_retransmitted=true;
             }
 
             res.push_back(std::move(pkt));

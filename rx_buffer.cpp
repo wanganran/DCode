@@ -4,26 +4,20 @@
 #include "rx_buffer.h"
 
 //the segment doesn't need to be freed after the call.
-int Rx_buffer::receive(Rx_segment* segment, Packet* out_packets_arr){
+int Rx_buffer::receive(Rx_segment* segment, Packet* out_packets_arr, bool is_retrans=false){
     //deferred: update NACK
     auto _deferred=defer([&](){
         _update_NACK(segment->get_full_id(size_per_frame_));
     });
 
-    /*
-    //first, check if the segment is a standalone retransmission
-    bool is_retrans_block=false;
-    if((segment->metadata.reserved & 4)>0){
-        is_retrans_block=true;
-    }
+    if(last_tick_==-1)last_tick_=get_current_millis();
+    else if(_check_timeout())reset();
+    last_tick_=get_current_millis();
 
-    //first, insert the segment
-    //prerequisite: segment is a newly arrived one.
-    if(is_retrans_block)
+    if(is_retrans)
         if(!_insert_retransmission(segment))return 0;
     else
-        */
-    if(!_insert(segment))return 0;
+        if(!_insert(segment))return 0;
 
     //second, check it complete a packet, or it is a combined retransmission block
     int left_flag, right_flag, vacancies;

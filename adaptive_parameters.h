@@ -32,7 +32,7 @@ public:
     FEC_level FEC_strength_secondary;
 
     bool palette_analyzer_combine(){
-
+        //TODO
     }
 
     static Rx_adaptive_parameters& get_global_by_parity(bool parity, bool& out_is_newest){

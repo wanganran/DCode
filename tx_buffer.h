@@ -98,6 +98,8 @@ private:
         In_ref(std::shared_ptr<Packet> packet):in_type(PACKET), workload(packet){}
         In_ref(const Tx_PHY_probe& probe):in_type(PROBE), workload(probe){}
         In_ref(const Tx_PHY_action& action):in_type(ACTION), workload(action){}
+
+
     };
 
     std::queue<In_ref> urgent_queue_;
@@ -115,7 +117,6 @@ private:
 public:
 
     std::future<bool> push_packet(uint8_t* source, unsigned int length);
-    std::future<bool> push_ack(const Ack& ack);
     std::future<bool> push_action_block(const Tx_PHY_action& action);
     std::future<bool> push_probe_block(const Tx_PHY_probe& probe);
 
