@@ -316,6 +316,40 @@ private:
 
 }
 */
+template<typename T>
+struct Rx_frame_stat{
+protected:
+    int block_count_x_;
+    int block_count_y_;
+    Mat<T> mat_;
+public:
+    Rx_frame_stat():block_count_x_(Config::current().barcode_config.horizontal_block_count),
+                    block_count_y_(Config::current().barcode_config.vertical_block_count),
+                    mat_(block_count_x_,block_count_y_,[](int,int){return T();}){}
+    int total_raw_frames_received;
+
+    void clear(){
+        for(int i=0;i<block_count_x_;i++)
+            for(int j=0;j<block_count_y_;j++)
+                mat_[i][j]=T();
+    }
+};
+
+struct Rx_frame_availability:public Rx_frame_stat<std::pair<int,int>>{
+public:
+    int& recognized_blocks(int x, int y){return mat_[x][y].first;}
+    int& demodulated_blocks(int x, int y){return mat_[x][y].second;}
+};
+
+struct Rx_frame_error_rate:public Rx_frame_stat<std::vector<double>>{
+public:
+    void push_BER(int x, int y, double ber){
+        mat_[x][y].push_back(ber);
+    }
+    std::vector<double>& get_BER(int x, int y){
+        return mat_[x][y];
+    }
+};
 
 struct Rx_segment : public Noncopyable{
 private:
@@ -350,172 +384,4 @@ public:
         return metadata.FID * block_per_frame + block_id;
     }
 };
-/*
-struct Rx_frame: public Noncopyable{
-
-    std::vector<Rx_segment> segments;
-    std::vector<Block_type> block_types;
-
-    Rx_frame(int vcount, int hcount):segments((unsigned)(vcount*hcount)),block_types((unsigned)(vcount*hcount)){}
-    void reset(){
-        for(int i=0;i<segments.size();i++){
-            segments[i].reset();
-            block_types[i]=Block_type::IDLE;
-        }
-    }
-};
-
-struct Tx_window: public Noncopyable{
-    const static int WINDOW_SIZE_HIGH=10;
-    const static int WINDOW_SIZE_LOW=10;
-private:
-    Packet* frames_high_[WINDOW_SIZE_HIGH];
-    Packet* frames_low_[WINDOW_SIZE_LOW];
-
-    int top_;
-    int tail_;
-public:
-    Tx_window():top_(0),tail_(0){
-
-    }
-    //won't block
-    bool push_packet(Packet* pkt, bool high_priority);
-
-    Packet* pull_packet();
-};
- */
-
-/*
-struct Rx_window: public Noncopyable{
-    const static int WINDOW_SIZE=64;
-private:
-    Rx_segment* segments_;
-    int segments_count_;
-    int segments_per_frame_;
-    int top_; //is always 1 segment beyond the most recent delivery
-    int tail_; //is always the least recent delivery/not deliveried.
-public:
-
-    Rx_window():top_(0),tail_(0){
-        auto& config=Config::current();
-        segments_per_frame_=config->barcode_config.vertical_block_count*config->barcode_config.horizontal_block_count;
-        segments_count_=segments_per_frame_*WINDOW_SIZE;
-        segments_=new Rx_segment[segments_count_];
-    }
-    ~Rx_window(){
-        delete[] segments_;
-    }
-    Rx_segment* tail(int& out_skip) {
-        if (top_ == tail_)return nullptr;
-        out_skip = 0;
-        int tail = tail_, top = top_;
-        if (tail > top)
-            top += segments_count_;
-
-        //one frame buffer
-        int till_idx=segments_per_frame_*(top/segments_per_frame_-1);
-
-        while (tail < till_idx) {
-            if (!segments_[tail%segments_count_].inited()) {
-                out_skip++;
-                tail++;
-            }
-            else if (!segments_[tail%segments_count_].is_non_segment())
-                tail++;
-            else {
-                tail_=tail%segments_count_;
-                return &(segments_[tail%segments_count_]);
-            }
-        }
-        return nullptr;
-    }
-    bool pop(Rx_segment* seg){
-        int idx=(int)(seg-segments_);
-        seg->reset();
-
-        tail_=(idx+1)%segments_count_;
-
-        return true;
-    }
-
-    //for write
-    //if conflicted, return false
-    bool as_non_segment(int FID, int block_id, bool& overlapped){
-        int idx=FID*segments_per_frame_+block_id;
-
-        int tail=tail_,top=top_;
-
-
-        if(tail==top){
-            //currently empty
-            segments_[idx].init_as_non_segment();
-            top_=idx+1;
-            return true;
-        }
-        else {
-            if (tail > top)top += segments_count_;
-
-            int till_idx = segments_per_frame_ * (top / segments_per_frame_ - 1);
-
-            //determine new idx
-            int abs_idx;
-            if(tail_>top_) {
-                if (idx <= top_)abs_idx = idx + segments_count_;
-                else abs_idx = idx;
-            }
-            else abs_idx=idx;
-
-            if(till_idx<tail)till_idx=tail;
-
-            if(abs_idx<till_idx && abs_idx>=tail) {
-                overlapped = true;
-                segments_[idx].init_as_non_segment();
-                top_=(idx+1)%segments_count_;
-                return true;
-            }
-            else if(abs_idx>=till_idx && abs_idx<=top)
-
-            if (till_idx <= tail) {
-                //not possible to overlap
-                overlapped = false;
-            }
-            else {
-                int till_idx_mod=till_idx%segments_per_frame_;
-            }
-                if(tail_<top_) {
-                    if (idx <= top_ && idx >= tail_) {
-                        if (segments_[idx].is_non_segment())return true;
-                        else {
-                            segments_[idx].init_as_non_segment();
-                            return false;
-                        }
-                    }
-                    else{
-                        segments_[idx].init_as_non_segment();
-                        top_=(idx+1)%segments_count_;
-                        return true;
-                    }
-                }
-                else{
-                    if(idx<=top || idx>=tail){
-                        if(segments_[idx].is_non_segment())return true;
-                        else {
-                            segments_[idx].init_as_non_segment();
-                            return false;
-                        }
-                    }
-                    else{
-                        segments_[idx].init_as_non_segment();
-                        top_=(idx+1)%segments_count_;
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    //Rx_segment* as_segment(Block_meta meta, int block_id, uint8_t* data, int len, bool& replaced);
-
-    bool push();
-};
-*/
 #endif //DCODE_STRUCTURES_H
