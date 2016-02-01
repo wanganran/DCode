@@ -11,6 +11,9 @@
 #endif //DCODE_ADAPTATION_H
 
 class Adaptation_unit{
+private:
+    Tx_buffer* buffer_;
+
 public:
     void input_probe(const Rx_PHY_probe_result& probe);
     void input_availability(const Rx_frame_availability& avail);

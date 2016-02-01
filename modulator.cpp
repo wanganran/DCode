@@ -235,21 +235,24 @@ void Modulator::modulate_probe(const Tx_PHY_probe &probe, Tx_block &dest) {
 // | 2 bit: FEC_level_pri | 2 bit: FEC_level_sec | 8 bit: self_FPS | 5 bytes: reserved
 // a low rate FEC by default (16,8)
 void Modulator::modulate_action(const Tx_PHY_action &action, Tx_block &dest) {
-    static Reed_solomon_code low_rate_rs_code(16,8);
+    static Reed_solomon_code low_rate_rs_code(24,12);
 
     auto& parameters=Tx_adaptive_parameters::current();
     dest.init(parameters.block_sidelength, Block_type::PROBE, 0, parameters.parity);
 
-    uint8_t buffer[16];
+    uint8_t buffer[24];
     buffer[0]=(uint8_t)action.next_sidelength;
     buffer[1]=(uint8_t)((action.next_expected_parity?128:0) | (action.color_sec_mask << 4) | (((uint8_t)(action.FEC_level_pri))<<2) | ((uint8_t)(action.FEC_level_sec)));
     buffer[2]=(uint8_t)action.self_FPS;
+    buffer[3]=(uint8_t)action.disabled_blocks.size();
+    for(int i=0;i<action.disabled_blocks.size();i++)
+        buffer[4+i]=(uint8_t)action.disabled_blocks[i];
 
     low_rate_rs_code.encode(buffer);
 
     Tx_block_helper helper(dest);
     Escaper escaper;
-    for(int i=0;i<16;i++){
+    for(int i=0;i<24;i++){
         _push_primary_with_escape(escaper, helper, buffer[i]);
     }
 }
@@ -516,7 +519,7 @@ bool Demodulator::demodulate_probe(Rx_block &src, Pixel_reader* reader, Rx_PHY_p
 }
 
 bool Demodulator::demodulate_action(Rx_block &src, Rx_PHY_action_result &action_dest) {
-    static Reed_solomon_code low_rate_rs_code(16,8);
+    static Reed_solomon_code low_rate_rs_code(24,12);
     Block_content_helper helper(src);
     bool newest;
     auto& parameters=Rx_adaptive_parameters::get_global_by_parity(src.parameter_parity,newest);
@@ -524,18 +527,23 @@ bool Demodulator::demodulate_action(Rx_block &src, Rx_PHY_action_result &action_
     helper.pull_symbol(dest);
     Escaper escaper;
 
-    uint8_t buffer[16];
+    uint8_t buffer[24];
     uint8_t* ptr=buffer;
-    while(ptr!=buffer+16)
+    while(ptr!=buffer+24)
         ptr=escaper.input(parameters.palette_matcher->match_primary(dest),ptr);
 
     if(low_rate_rs_code.decode(buffer)){
         action_dest.next_sidelength=buffer[0];
-        action_dest.next_expected_parity=(buffer[1]&128)>0?true:false;
+        action_dest.next_expected_parity=(buffer[1]&128)>0;
         action_dest.color_sec_mask=(uint8_t)((buffer[1]>>4)&7);
         action_dest.FEC_level_pri=(FEC_level)((buffer[1]>>2)&3);
         action_dest.FEC_level_sec=(FEC_level)((buffer[1])&3);
         action_dest.self_FPS=buffer[2];
+        int size=buffer[3];
+        action_dest.disabled_blocks.clear();
+        for(int i=0;i<size;i++)
+            action_dest.disabled_blocks.push_back(buffer[4+i]);
+
         return true;
     }
     else

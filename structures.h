@@ -249,6 +249,7 @@ struct Tx_PHY_action{
     uint8_t color_sec_mask;
     FEC_level FEC_level_pri, FEC_level_sec;
     int self_FPS;
+    std::vector<int> disabled_blocks;
 };
 
 struct Ack {
