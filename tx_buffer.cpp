@@ -434,9 +434,8 @@ std::shared_ptr<Packet> Tx_buffer::_form_ack_packet(const Ack &ack) {
         std::vector<uint8_t> flipped;
         auto it=pair.second.begin();
         for(int i=0;i<block_per_frame_;i++) {
-            if (*it == i) {
+            if (it!=pair.second.end() && *it == i) {
                 it++;
-                continue;
             }
             else
                 flipped.push_back(i);

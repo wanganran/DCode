@@ -3,6 +3,50 @@
 //
 #include "rx_buffer.h"
 
+Ack Rx_buffer::_parse_ack(Packet* pkt) {
+    uint8_t* ptr=pkt->data;
+    Ack res;
+    while(ptr<pkt->data+pkt->length){
+        int fid=ptr[0];
+        bool flipped=(ptr[1]>=128);
+        int num=ptr[1]&127;
+        ptr+=2;
+
+        std::vector<int> dest;
+        for(int i=0;i<num;i++){
+            if(ptr[0]<128){
+                dest.push_back(fid*size_per_frame_+(ptr[0]&127));
+                ptr++;
+            }
+            else{
+                int start=(ptr[0]&127);
+                int end=(ptr[1]&127);
+                for(int i=start;i<=end;i++){
+                    dest.push_back(fid*size_per_frame_+i);
+                }
+                ptr+=2;
+            }
+        }
+        if(flipped){
+            std::vector<int> flip;
+            int t=0;
+            for(int i=0;i<size_per_frame_;i++) {
+                if (t<dest.size() && dest[t] == i) {
+                    t++;
+                }
+                else
+                    flip.push_back(i);
+            }
+
+            res.blocks_to_acked.insert(res.blocks_to_acked.end(),flip.begin(),flip.end());
+        }
+        else
+            res.blocks_to_acked.insert(res.blocks_to_acked.end(),dest.begin(),dest.end());
+    }
+
+    return res;
+}
+
 //the segment doesn't need to be freed after the call.
 int Rx_buffer::receive(Rx_segment* segment, Packet* out_packets_arr, bool is_retrans=false){
     //deferred: update NACK
@@ -52,9 +96,13 @@ int Rx_buffer::receive(Rx_segment* segment, Packet* out_packets_arr, bool is_ret
 
             //check if the formed packet is a retransmission
             if(type==Packet_type::RETRANSMISSION){
-                Packet* copy_current=new Packet(*out_packets_arr);
-                return _fill_retransmission_packet(out_packets_arr, left_flag, out_packets_arr);
-                delete copy_current;
+                Packet copy_current(*out_packets_arr);
+                auto res=_fill_retransmission_packet(&copy_current, left_flag, out_packets_arr);
+                return res;
+            }
+            else if(type==Packet_type::ACK){
+                Ack_buffer::shared().push_retrans(_parse_ack(out_packets_arr));
+                return 0;
             }
             else return 1;
         }
@@ -63,11 +111,6 @@ int Rx_buffer::receive(Rx_segment* segment, Packet* out_packets_arr, bool is_ret
         return 0;
 }
 
-//receive a function (buffer, size, peak, tail)->bool). Shift NACK buffer if returning true
-void Rx_buffer::manipulate_and_shift_NACK(std::function<bool(NACK_buffer*, int, int, int)> func){
-    if(func(NACK_buffer_, R, NACK_buffer_peak_, NACK_buffer_tail_))
-        _shift_NACK_buffer();
-}
 
 void Rx_buffer::reset(){
     _init_buffer();

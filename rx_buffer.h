@@ -108,6 +108,8 @@ private:
         return out_ack;
     }
 
+    Ack _parse_ack(Packet* pkt);
+
     ///end NACK buffer
 
     //begin Block_ref
@@ -484,8 +486,6 @@ public:
     int receive(Rx_segment* segment, Packet* out_packets_arr, bool is_retrans=false);
     //reset all data
     void reset();
-    //receive a function (buffer, size, peak, tail)->bool). Shift NACK buffer if returning true
-    void manipulate_and_shift_NACK(std::function<bool(NACK_buffer*, int, int, int)> func);
 };
 
 #endif //DCODE_RX_BUFFER_H
