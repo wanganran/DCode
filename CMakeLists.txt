@@ -35,8 +35,6 @@ add_executable(DCode ${SOURCE_FILES}
                utils/escaper.h
                structures.h
                adaptive_parameters.h
-               packet.h
-               packet.cpp
                pixel_reader_Android.h
                utils/reed_solomon_code.cpp
                utils/reed_solomon_code.h

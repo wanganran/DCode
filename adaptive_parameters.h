@@ -33,6 +33,7 @@ public:
 
     std::vector<int> disabled_blocks;
 
+    //for each frame/probe/..., call this function to adjust the palette_matcher by the analysis from palette_analyzer, and clear the palette_analyzer for next use.
     bool palette_analyzer_combine(){
         //TODO
     }
