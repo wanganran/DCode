@@ -40,8 +40,8 @@ public:
     static const int BLACK=0;
     static const int WHITE=(1<<channel)-1;
 
-    static Palette* current(){
-        static Palette* p=new Palette();
+    static Palette current(){
+        static Palette p;
         return p;
     }
 

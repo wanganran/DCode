@@ -10,7 +10,7 @@
 
 using namespace std;
 
-Locator_scanner::Locator_scanner(Pixel_reader* reader):reader_(reader), shared_palette_(Palette::current()) {
+Locator_scanner::Locator_scanner(Pixel_reader* reader):reader_(reader) {
     _update_matcher();
 }
 

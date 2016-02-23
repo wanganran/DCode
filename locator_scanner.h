@@ -23,7 +23,6 @@
 class Locator_scanner{
 private:
 	const Pixel_reader* reader_;
-	const Palette* shared_palette_;
 
     typedef std::array<int,4> Scanned_boundaries_primary_;
     typedef std::array<int,2> Scanned_boundaries_secondary_;
@@ -61,7 +60,7 @@ private:
     std::unique_ptr<Palette::Matcher> current_matcher_;
     int ythres_=0;
     void _update_matcher(){
-        current_matcher_=shared_palette_->get_matcher();
+        current_matcher_=Palette::current().get_matcher();
 
         int thresR=current_matcher_->get_threshold_primary(0);
         int thresG=current_matcher_->get_threshold_primary(1);

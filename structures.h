@@ -244,12 +244,18 @@ struct Tx_PHY_probe{
 };
 
 struct Tx_PHY_action{
+    int ID;
+
     bool next_expected_parity;
     int next_sidelength;
     uint8_t color_sec_mask;
     FEC_level FEC_level_pri, FEC_level_sec;
     int self_FPS;
     std::vector<int> disabled_blocks;
+
+    Tx_PHY_action():ID(0){
+
+    }
 };
 
 struct Ack {
