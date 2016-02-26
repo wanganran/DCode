@@ -83,68 +83,6 @@ public:
 
     };
 
-    class Analyzer{
-        friend class Palette;
-    private:
-        const int mask_;
-        struct Stat_t{
-            int sum[channel];
-            int power_sum[channel];
-            int tot;
-            Stat_t(){
-                memset(sum,0,sizeof(int)*channel);
-                memset(power_sum,0,sizeof(int)*channel);
-                tot=0;
-            }
-            void add(const RGB& c){
-                sum[0]+=c.R;
-                sum[1]+=c.G;
-                sum[2]+=c.B;
-                power_sum[0]+=c.R*c.R;
-                power_sum[1]+=c.G*c.G;
-                power_sum[2]+=c.B*c.B;
-                tot++;
-            }
-        } *stat;
-
-        Analyzer(const Palette* conf):mask_(conf->mask_){
-            assert(((mask_+1)&mask_)==0);
-            stat=new Stat_t[mask_+1];
-        }
-
-        inline bool _match(int value, int filter, int data){
-            return (value&filter)==(data&filter);
-        }
-
-    public:
-        ~Analyzer(){
-            if(stat)delete[] stat;
-        }
-        //supervised statistic
-        void add(int type, const RGB color){
-            stat[type].add(color);
-        }
-        //get the statistics of a given channel.
-        //'channel' indicates which primary/secondary channel you want to count,
-        //'filter_mask' indicates which channels are needed to be matched,
-        //'value_mask' indicates the actual value of the channels to be matched,
-        //return the total number of involved entries.
-        int get_stat(int channel,int filter_mask, int value_mask, double& out_mean, double& out_variance){
-            int mean=0;
-            int mean_tot=0;
-            int power_sum=0;
-            for(int i=0;i<=mask_;i++)
-                if(_match(value_mask, filter_mask, i)){
-                    mean+=stat[i].sum[channel];
-                    mean_tot+=stat[i].tot;
-                    power_sum+=stat[i].power_sum[channel];
-                }
-            out_mean=mean/(double)mean_tot;
-            out_variance=power_sum/(double)mean_tot-out_mean*out_mean;
-            return mean_tot;
-        }
-    };
-
     class Adjuster {
         friend class Palette;
 
@@ -210,10 +148,6 @@ public:
 
     std::unique_ptr<Matcher> get_matcher() const{
         return std::unique_ptr<Matcher>(new Matcher(this));
-    }
-
-    std::unique_ptr<Analyzer> get_analyzer() const{
-        return std::unique_ptr<Analyzer>(new Analyzer(this));
     }
 
     std::unique_ptr<Adjuster> get_adjuster(){

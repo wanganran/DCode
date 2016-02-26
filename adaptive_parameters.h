@@ -17,7 +17,6 @@ private:
                              FEC_strength_secondary(FEC_level::MID),
                              FEC_strength_primary(FEC_level::MID),
                              palette_matcher(nullptr),
-                             palette_analyzer(nullptr)
     {
     }
 
@@ -27,7 +26,6 @@ public:
     int block_sidelength;
     uint8_t color_sec_mask;
     std::unique_ptr<Palette::Matcher> palette_matcher;
-    std::unique_ptr<Palette::Analyzer> palette_analyzer;
     FEC_level FEC_strength_primary;
     FEC_level FEC_strength_secondary;
 
