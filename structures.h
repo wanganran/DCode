@@ -304,7 +304,7 @@ public:
 };
 
 struct Rx_PHY_probe_result{
-    RGB received_probe_colors[64];
+    RGB received_probe_colors[64][9];
     enum class Edge_sharpness{
         SHARP,
         MEDIUM,
@@ -353,7 +353,7 @@ public:
     void push_BER(int x, int y, double ber){
         mat_[x][y].push_back(ber);
     }
-    std::vector<double>& get_BER(int x, int y){
+    std::vector<double>& get_BER(int x, int y) const{
         return mat_[x][y];
     }
 };

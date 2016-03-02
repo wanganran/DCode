@@ -176,6 +176,7 @@ private:
         Block_content_helper(Rx_block & content);
         int get_total_symbol_count();
         bool pull_symbol(RGB& out_color);
+        bool pull_position(Point& out_pos);
         bool pull_symbol_smoothed(RGB& out_color);
         int get_actual_pos(){return pos_;}
     };

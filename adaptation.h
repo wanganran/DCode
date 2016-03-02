@@ -82,6 +82,8 @@ private:
     };
     int last_action_id_;
     Palette_analyzer current_analyzer_;
+    std::vector<Error_estimate> sec_err_estimate_[3];
+    Rx_frame_error_rate accu_frame_err_rate_;
 
     Adaptation_unit():last_action_id_(-1){}
 public:

@@ -392,8 +392,13 @@ bool Demodulator::demodulate_data(Rx_block &src, uint8_t *data_dest, int &out_le
 bool Demodulator::demodulate_probe(Rx_block &src, Pixel_reader* reader, Rx_PHY_probe_result &probe_dest) {
     Block_content_helper helper(src);
     //first palette
-    for(int i=0;i<64;i++)
-        helper.pull_symbol_smoothed(probe_dest.received_probe_colors[i]);
+    for(int i=0;i<64;i++) {
+        Point pos;
+        helper.pull_position(pos);
+        for(int j=-1;j<=1;j++)
+            for(int k=-1;k<=1;k++)
+                probe_dest.received_probe_colors[i][(j+1)*3+k+1]=reader->get_RGB(pos.x,pos.y);
+    }
     //then error rates
     int len=helper.get_total_symbol_count();
     //store the correct and error symbol number of primary channel
@@ -601,6 +606,17 @@ bool Demodulator::Block_content_helper::pull_symbol(RGB& out_color) {
     out_color=content_->get_center_color(pos_%content_->sidelength,pos_/content_->sidelength);
     return true;
 }
+
+bool Demodulator::Block_content_helper::pull_position(Point& out_pos){
+     while(pos_<ARRSIZE(escape_buffer) && pos_<content_->sidelength*content_->sidelength && escape_buffer[escape_pos_]==pos_) {
+        pos_++;
+        escape_pos_++;
+    }
+    if(pos_>=content_->sidelength*content_->sidelength)return false;
+    out_pos=Point(pos_%content_->sidelength,pos_/content_->sidelength);
+    return true;
+}
+
 bool Demodulator::Block_content_helper::pull_symbol_smoothed(RGB &out_color) {
     while(pos_<ARRSIZE(escape_buffer) && pos_<content_->sidelength*content_->sidelength && escape_buffer[escape_pos_]==pos_) {
         pos_++;
